@@ -8,11 +8,16 @@ Date: 23 October 2026 (Asia/Bangkok).
 - Android/resource XML and workflow YAML parsed successfully.
 - All Java sources syntax-parsed using the JDK compiler without Android type resolution.
 
+## Verified on GitHub Actions
+
+- [Build run 39844447943](https://github.com/pnntrn/cctv-apk/actions/runs/39844447943) passed for commit `bca0da80ad730fa51e9923abc0b2c0f98b6d285a`.
+- `testDebugUnitTest`, `lintDebug`, `assembleDebug`, and `assembleRelease` completed successfully.
+- The `cctv-tv-apks` artifact contains an installable debug-signed APK, an unsigned optimized release APK, and SHA256SUMS.
+
 ## Not yet verified
 
-- Android compilation, Android lint, and APK packaging: this environment has no Android SDK or Gradle installation; outbound Android/Gradle download attempts timed out. The supplied GitHub Actions workflow runs these checks when uploaded to an accessible repository.
 - Installation, TV launcher presentation, physical D-pad behavior, Keystore persistence, codec support, recovery behavior, and RTSP playback: no Android TV emulator, TV stick, or reachable NVR was provided.
-- Performance and memory measurements: no measured APK size, startup latency, stream latency, or maximum stream count is claimed.
+- Performance and memory measurements: no measured startup latency, stream latency, or maximum stream count is claimed.
 
 ## Device acceptance checks
 

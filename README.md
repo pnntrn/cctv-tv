@@ -2,6 +2,8 @@
 
 A small native Android TV app for direct live RTSP viewing. Built for a D-pad remote, Android TV / Google TV boxes and sticks running Android 8.0 or newer. No server, cloud login, WebView, account service, or bundled FFmpeg.
 
+[Download the APK bundle](https://github.com/pnntrn/cctv-apk/actions/runs/39844447943/artifacts/12454414014), unzip it, and install **cctv-tv-debug.apk** for testing. This private repository requires GitHub sign-in. The unsigned release APK cannot be installed directly.
+
 ## What it does
 
 - Save multiple locations, each with its own cameras and grid size.
@@ -85,7 +87,7 @@ Install the development APK with Android TV's package installer (allow installat
 
 ## Verification status
 
-See [VALIDATION.md](VALIDATION.md) for executed checks, build limitations, and device acceptance steps. Source implementation is available; a successful APK build and real-camera playback are not claimed until those checks run.
+See [VALIDATION.md](VALIDATION.md) for executed checks, build limitations, and device acceptance steps. GitHub Actions has successfully run the unit tests, Android lint, and both APK builds. Real-camera playback and TV hardware behavior still need device testing.
 
 ## Privacy
 
