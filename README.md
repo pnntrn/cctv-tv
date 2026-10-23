@@ -59,9 +59,9 @@ Authentication rejection, missing stream paths, network reachability, timeouts a
 
 **Automatic CI signing requires one private GitHub repository secret: `CCTV_SIGNING_BUNDLE`.** It contains JSON with `keystore` (base64 PKCS12), `password`, and `alias`. The workflow uses it only in runner temporary storage, masks the password and deletes the keystore before artifact upload. No private key is committed or included in artifacts.
 
-On a trusted computer with JDK 17, Python 3 and an authenticated GitHub CLI, run `bash scripts/configure-signing.sh` once. It creates a retained RSA key, keeps a private backup outside this project, and saves the repository secret without printing it. Retain that backup securely; never replace the key during normal updates. Then run the workflow again and install `cctv-release.apk`.
+The retained key is already configured and privately backed up. Do not generate another key for an existing installation. `scripts/configure-signing.sh` is for initial project bootstrap only. For normal builds, run the workflow and use its signed `cctv-release.apk`.
 
-The first 0.2.0 release was signed separately with the retained key and its APK v2/v3 signatures verified. Its certificate SHA-256 is `4bb96b0ff9021cc49885f9cdd02d62ec3e58c3704cd65853e8dc2269316c5f9b`. It is approximately 418 KiB. Automatic signed CI output is still pending the repository secret.
+The first 0.2.0 release was signed separately with the retained key and its APK v2/v3 signatures verified. Its certificate SHA-256 is `4bb96b0ff9021cc49885f9cdd02d62ec3e58c3704cd65853e8dc2269316c5f9b`. It is approximately 418 KiB. The retained signing identity is now configured in GitHub Actions.
 
 The old development build used an ephemeral debug key. Moving from that build to the retained release key may require a one-time uninstall, which removes local profiles. Subsequent releases signed with the retained key install as updates. Debug builds continue using development keys and are not the supported upgrade channel. CI version codes increase with workflow run number.
 
@@ -89,3 +89,17 @@ Settings are encrypted locally using Android Keystore AES-GCM and saved atomical
 ## Branding
 
 The CCTV camera-grid mark, CCTV wordmark, TV banner and adaptive launcher icon are native vector assets. Editable artwork is in `brand/cctv-logo.svg`, with a PNG preview alongside it.
+
+## In-app updates (0.3)
+
+Open **Settings → Check for updates**. On the welcome screen, choose Settings then Check for updates. The app checks the public APK-only feed in [pnntrn/cctv-updates](https://github.com/pnntrn/cctv-updates). Download, then select Install; Android may first ask you to allow installations from CCTV. Press Back after enabling it, then select Install again. Installation needs Android confirmation.
+
+Updates keep encrypted profiles when the existing installation uses the retained release key. Old debug builds require a one-time switch to the signed release. The updater rejects a different package, signing key, older/equal version, incompatible Android version, incorrect size or SHA-256. Every request and redirect uses HTTPS. Downloads run only while CCTV is visible and stop on Back/cancel/background; no scheduled checks, storage permission, or account tokens.
+
+Release signing is configured with the private `CCTV_SIGNING_BUNDLE` Actions secret. CI builds the signed `cctv-release.apk`; only publish after build, lint, unit tests and native UI checks pass. With authenticated GitHub CLI and Android SDK `aapt`/`apksigner` on PATH, run:
+
+```sh
+python3 scripts/publish-update.py path/to/cctv-release.apk --notes "Changes in this release"
+```
+
+This verifies the retained certificate and version, then publishes only the APK, public release notes and feed. Downloads are pinned to an immutable APK commit. Source and signing files stay private. Publishing needs write access to `pnntrn/cctv-updates`; it does not require embedding a GitHub token in the app or setting up a cross-repository CI token.

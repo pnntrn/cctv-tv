@@ -51,6 +51,11 @@ public final class MainActivity extends Activity {
     private StreamTile fullTile;
     private TextView fullHelp;
     private Toast activeToast;
+    private AppUpdater updater;
+    private void showUpdates() {
+        try { if (updater == null) updater = new AppUpdater(this); updater.show(); }
+        catch (Exception e) { toast("Cannot open updates; restart CCTV and retry"); }
+    }
     private final Runnable hideChrome = () -> {
         if (fullTile != null) fullTile.setChromeVisible(false);
         if (fullHelp != null) fullHelp.setVisibility(View.GONE);
@@ -99,11 +104,16 @@ public final class MainActivity extends Activity {
             page = state.getInt("page"); focusedCamera = state.getInt("focus");
             fullscreen = state.getInt("fullscreen", -1);
         }
+        if (state != null && state.containsKey("update.pending")) {
+            try { updater = new AppUpdater(this); updater.restoreState(state); } catch (Exception ignored) { }
+        }
         render();
     }
 
     @Override protected void onStart() { super.onStart(); started = true; if (storageOkay) render(); }
+    @Override protected void onResume() { super.onResume(); if (updater != null) updater.resume(); }
     @Override protected void onStop() {
+        if (updater != null) updater.stop();
         viewingSave.removeCallbacksAndMessages(null);
         if (storageOkay && current != null && !arranging) {
             current.lastPage = page;
@@ -112,10 +122,11 @@ public final class MainActivity extends Activity {
         }
         started = false; if (activeToast != null) activeToast.cancel(); closePairing(); releaseStreams(); ui.removeCallbacksAndMessages(null); super.onStop();
     }
-    @Override protected void onDestroy() { releaseStreams(); super.onDestroy(); }
+    @Override protected void onDestroy() { if (updater != null) updater.close(); releaseStreams(); super.onDestroy(); }
     @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (focus) immersive(); }
     @Override protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
+        if (updater != null) updater.saveState(out);
         out.putString("location", current == null ? "" : current.id);
         out.putInt("page", page); out.putInt("focus", focusedCamera); out.putInt("fullscreen", fullscreen); out.putBoolean("fullSub", fullSub);
     }
@@ -203,7 +214,7 @@ public final class MainActivity extends Activity {
         addButton(header, button(arranging ? "Save order" : "Arrange", this::toggleArrange));
         addButton(header, button("Settings", () -> {
             if (arranging) { toast("Save or cancel arrangement first"); return; }
-            if (current != null) { managing = true; render(); } else editLocation(null);
+            if (current != null) { managing = true; render(); } else new AlertDialog.Builder(this).setTitle("CCTV settings").setItems(new String[]{"Add location", "Check for updates"}, (d, which) -> { if (which == 0) editLocation(null); else showUpdates(); }).show();
         }));
         root.addView(header);
         if (current != null) root.addView(text(arranging ? "Arrange cameras" : "LIVE VIEW   ·   " + current.cameras.size() + " cameras   ·   Substreams", 12, MINT));
@@ -444,7 +455,7 @@ public final class MainActivity extends Activity {
         addButton(header, button("+ Add", this::addCameras));
         addButton(header, button("Location", this::locationOptions)); root.addView(header);
         LinearLayout tools = row(); addButton(tools, button("Recorders", this::recorderPicker));
-        addButton(tools, button("Set up from phone", this::startPhoneSetup)); root.addView(tools);
+        addButton(tools, button("Set up from phone", this::startPhoneSetup)); addButton(tools, button("Check for updates", this::showUpdates)); root.addView(tools);
         root.addView(text("Camera settings stay on this device. RTSP transport: " + (current.tcp ? "TCP" : "UDP with TCP fallback"), 13, MINT));
         LinearLayout list = form();
         if (current.cameras.isEmpty()) list.addView(text("Add an NVR to create channels together, or add a custom RTSP camera.", 18, TEXT));

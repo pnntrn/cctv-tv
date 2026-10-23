@@ -17,6 +17,7 @@ import static org.junit.Assert.*;
 @RunWith(AndroidJUnit4.class)
 public class TvFlowTest {
     private void shot(UiDevice d,String name) {
+        d.waitForIdle(); android.os.SystemClock.sleep(250);
         File file=new File(InstrumentationRegistry.getInstrumentation().getTargetContext().getFilesDir(),"ui-"+name+".png");
         assertTrue(d.takeScreenshot(file));
     }
@@ -38,6 +39,10 @@ public class TvFlowTest {
             assertTrue(d.wait(Until.hasObject(By.textContains("Substreams")),5000));
             d.findObject(By.text("Settings")).click();
             assertTrue(d.wait(Until.hasObject(By.text("Recorders")),5000));shot(d,"settings");
+            d.findObject(By.text("Check for updates")).click();
+            assertTrue(d.wait(Until.hasObject(By.textContains("Installed: CCTV")),5000));
+            shot(d,"updates");d.pressBack();
+            assertTrue(d.wait(Until.hasObject(By.text("Recorders")),5000));
             d.findObject(By.text("Recorders")).click();
             d.wait(Until.findObject(By.text("Shop recorder")),5000).click();
             assertTrue(d.wait(Until.hasObject(By.text("Recorder name")),5000));shot(d,"recorder");d.pressBack();

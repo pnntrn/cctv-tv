@@ -30,7 +30,9 @@ jobs:
       - name: Install pinned Android SDK
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - name: Check core behavior
-        run: bash scripts/check-core.sh
+        run: |
+          bash scripts/check-core.sh
+          bash scripts/check-updates.sh
       - name: Load retained release signing key
         env:
           CCTV_SIGNING_BUNDLE: ${{ secrets.CCTV_SIGNING_BUNDLE }}

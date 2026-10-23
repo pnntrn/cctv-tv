@@ -1,0 +1,6 @@
+# CCTV server updates
+User asked for a button to update from a server and selected public APK downloads in a separate repository while retaining private source. Use `pnntrn/cctv-updates` for a small HTTPS JSON manifest and versioned signed APKs. An existing HTTPS server would also work, but requires separate hosting; private repository downloads would require distributing credentials and are unsuitable.
+
+Settings and the welcome screen expose Check for updates. A native remote-friendly dialog checks on demand, reports installed/latest version and release notes, downloads only after Download is selected, then offers Install. Android controls installation approval and source permission. Cancel closes the connection and removes partial downloads. Backgrounding cancels network work. Returning from permission settings offers Install again. Saved cameras remain untouched.
+
+No periodic background work or extra playback dependencies. HTTPS for every redirect, maximum 64 KiB manifest and 64 MiB APK, exact expected byte count and SHA-256. Inspect downloaded package ID, version code and exact installed signing identity before opening Android installer. A narrowly scoped provider exposes only the completed update APK. No GitHub credentials in the app. Publishing a new manifest is an explicit release step after CI passes.
