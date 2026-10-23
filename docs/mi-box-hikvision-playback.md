@@ -1,6 +1,6 @@
 # Mi Box / Hikvision consolidated playback follow-up
 
-Status: draft. The branch now includes H.264 in-band initialization and recorder draft recovery. Local protocol tests, Android build and lint pass; native and real-camera playback remain unverified. It is not yet a confirmed fix for the owner’s recorder.
+Status: draft. The branch now includes H.264 in-band initialization and recorder draft recovery. Local protocol tests, Android build/lint and all nine Android 9 native checks pass, including actual first-frame decoding. Real Mi Box / Hikvision playback remains unverified. It is not yet a confirmed fix for the owner's recorder.
 
 ## Observed on the real device
 
@@ -76,4 +76,36 @@ The second Android 9 native run passed the 11-channel callback-gated save/relaun
 
 The third native run passed all four draft/save/lifecycle tests, while actual decoding still stalled after codec initialization. Access-unit inspection found that elementary-stream samples included the following picture’s SPS/PPS at their end. A regression requiring the last NAL of an RTP-marked picture to be its VCL data failed before the correction. Format discovery now discards its elementary-stream samples and replays a bounded startup RTP cache through the existing marker-aware RtpH264Reader once real SPS/PPS are known. All 20 unit methods pass; extracted samples also decode without FFmpeg errors. Native tests now include a control using real SPS/PPS from the same synthetic fixture as well as the missing-fmtp case. The reorder fixture waits for actual remote focus instead of assuming camera 1 is focused. Native decoding is being rerun and remains unverified at this commit.
 
-The fourth native run passed all five draft/save/navigation/reorder checks. Both the valid-SDP control and missing-fmtp decoder test still stalled. The emulator reported qemu.skin=320x640 despite a logical wm-size override, and its UI captures were clipped 1080x640 images. The harness now creates the tv_1080p hardware profile with a matching physical skin, removes logical size overrides, verifies physical 1920x1080 dimensions, and requires a valid video Surface. Native cases cover preview/substream with and without fmtp, fullscreen in-band playback, and RTSP connection closure after releasing each decoded tile. This test-only change does not alter recorder encoding, production codec dimensions, signing or the stable feed. The eight native checks are pending; no native or real-camera success is claimed yet.
+The fourth native run passed all five draft/save/navigation/reorder checks. Both the valid-SDP control and missing-fmtp decoder test still stalled. The emulator reported qemu.skin=320x640 despite a logical wm-size override, and its UI captures were clipped 1080x640 images. The harness was changed to create the tv_1080p hardware profile with a matching physical skin, remove logical size overrides, verify physical 1920x1080 dimensions, and require a valid video Surface. Native cases cover preview/substream with and without fmtp, fullscreen in-band playback, and RTSP connection closure after releasing each decoded tile. This test-only change does not alter recorder encoding, production codec dimensions, signing or the stable feed. Those eight checks were pending at that commit; the subsequent failed run and local diagnosis are recorded below.
+
+## Shared decoder blocker isolated locally
+
+Run 40006776986 at 95a4493 failed all three video cases despite a valid physical TV display and Surface. The fullscreen case queued 75 decoder inputs and the preview/control cases queued 125; all rendered zero frames. The other five native checks passed. This rules out the earlier display-size hypothesis for that run.
+
+The unchanged valid-SDP control was reproduced on a clean local Android 9 / SDK 28 x86_64 TV emulator: 118 decoder inputs, zero output frames, position zero, 23.4 seconds buffered, valid Surface. Both targeted RTSP session regressions passed locally.
+
+A new direct MediaCodec regression bypasses RTSP, ExoPlayer and the Surface. With the original synthetic fixture it submitted 638 pictures without producing a decoded picture in 10 seconds. The fixture's SPS advertised max_num_ref_frames=0 and max_dec_frame_buffering=0. A controlled copy retaining the original picture bytes and changing only decoder buffering to one still failed; changing both fields to one decoded in 0.86 seconds. An encoder-generated comparison with those values decoded in 0.12 seconds. These are Android 9 synthetic-fixture results, not evidence about the owner's camera encoding.
+
+Both test fixture copies are now regenerated from FFmpeg's synthetic testsrc2 source, with the same 320x180 size, 5fps, three slices per picture, single-NAL/FU-A coverage and repeated real SPS/PPS. No production codec headers are rewritten. The direct decoder check requires a real decoded output buffer before end-of-stream and is independent of the three first-frame/release regressions.
+
+Fixture generation (FFmpeg 8.1.1 with libx264):
+
+```sh
+ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=320x180:rate=5' \
+  -t 1 -c:v libx264 -profile:v baseline -level:v 1.1 -preset ultrafast \
+  -tune zerolatency -x264-params 'keyint=2:min-keyint=2:scenecut=0:slices=3' \
+  -force_key_frames 'expr:gte(t,n_forced*0.2)' -f h264 inband.h264
+```
+
+The encoder advertises one reference frame and one decoder buffer while forcing all five pictures to IDR. Copy the generated file to app/src/androidTest/assets/inband.h264 and rtsp-compat/src/test/resources/inband.h264. Both copies have SHA-256 748abf39ce4e41af7ae7621ecf49b5366f576b53094ee70ba9eeb902d44573d8. The original fixture SHA-256 was 016cd3356392aa7862f2862d7553f460912b082eb32a3aa0ad7bc11a003efe86. FFmpeg is a local fixture-generation tool only; it is not an app dependency.
+
+## Verification after the fixture correction
+
+All checks below ran locally; no hosted workflow was manually started or rerun:
+
+- Android 9 / SDK 28, accelerated x86_64 TV emulator with physical 1920x1080 display at 320dpi: four decoder/playback tests passed in 10.674 seconds. These cover the independent direct decoder, valid-SDP preview, missing-fmtp preview and missing-fmtp fullscreen. Each StreamTile case still requires ExoPlayer's rendered-first-frame callback and verifies that release closes the RTSP connection.
+- All four recorder draft/save/lifecycle checks passed (46.748 seconds); the remote navigation/pairing/reorder persistence check passed (86.361 seconds). Total native result: nine tests, zero failures. No assertions were removed or relaxed.
+- Full Gradle command: testDebugUnitTest lintDebug assembleDebug assembleRelease assembleDebugAndroidTest. BUILD SUCCESSFUL in 2m45s; 20 JUnit methods, zero failures/errors. The app lint report has 19 warnings and the vendored module has four; neither has errors.
+- Core wrapper output retains 48 core, 38 extended and 22 updater checks. Both standalone digest-auth variants passed. FFmpeg decoded all five generated pictures without errors; both fixture copies have the same hash. git diff --check passed.
+
+This follow-up changes only test fixtures, a native regression and this document. Production playback sources, dependencies, profiles, signing configuration and the stable update feed are unchanged. The local release build is unsigned because the retained release key was not brought into this isolated checkout. No APK was installed on the owner's device, no app was uninstalled, and no release/update was published. The real recorder's authenticated SDP, decoded Mi Box preview, saved 11-channel playback, decoder capacity and in-place signed update/profile retention still require device verification. Keep this PR in draft.

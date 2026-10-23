@@ -30,6 +30,55 @@ import static org.junit.Assert.*;
 @UnstableApi
 @RunWith(AndroidJUnit4.class)
 public final class InBandPlaybackTest {
+    /** The RTSP oracle must itself decode on Android, independently of the player under test. */
+    @Test public void fixtureDecodesWithoutRtspOrExoPlayer() throws Exception {
+        byte[] fixture;
+        try (InputStream in = InstrumentationRegistry.getInstrumentation().getContext()
+                .getAssets().open("inband.h264")) {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = in.read(buffer)) != -1) bytes.write(buffer, 0, count);
+            fixture = bytes.toByteArray();
+        }
+        List<List<byte[]>> pictures = LoopbackRtspServer.accessUnits(fixture);
+        android.media.MediaFormat format = android.media.MediaFormat.createVideoFormat("video/avc", 320, 180);
+        for (byte[] nal : pictures.get(0)) {
+            int type = nal[0] & 31;
+            if (type == 7 || type == 8) {
+                java.nio.ByteBuffer config = java.nio.ByteBuffer.allocate(nal.length + 4);
+                config.putInt(1).put(nal).flip();
+                format.setByteBuffer(type == 7 ? "csd-0" : "csd-1", config);
+            }
+        }
+        android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType("video/avc");
+        int submitted = 0, decoded = 0;
+        try {
+            codec.configure(format, null, null, 0);
+            codec.start();
+            android.media.MediaCodec.BufferInfo info = new android.media.MediaCodec.BufferInfo();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (decoded == 0 && System.nanoTime() < deadline) {
+                int input = codec.dequeueInputBuffer(10000);
+                if (input >= 0) {
+                    java.nio.ByteBuffer bytes = codec.getInputBuffer(input);
+                    bytes.clear();
+                    for (byte[] nal : pictures.get(submitted % pictures.size()))
+                        bytes.put(new byte[] {0, 0, 0, 1}).put(nal);
+                    codec.queueInputBuffer(input, 0, bytes.position(), submitted * 200000L, 0);
+                    submitted++;
+                }
+                int output;
+                while ((output = codec.dequeueOutputBuffer(info, 10000)) >= 0) {
+                    if (info.size > 0) decoded++;
+                    codec.releaseOutputBuffer(output, false);
+                }
+            }
+            assertTrue("Direct Android decoder produced no pictures; submitted=" + submitted, decoded > 0);
+        } finally {
+            codec.release();
+        }
+    }
     @Test public void outOfBandControlDecodesTheSameSyntheticVideo() throws Exception { play(true,false); }
     @Test public void missingFmtpDecodesFirstFrameFromInterleavedInBandH264() throws Exception { play(false,false); }
     @Test public void missingFmtpFullscreenDecodesAndReleases() throws Exception { play(false,true); }
