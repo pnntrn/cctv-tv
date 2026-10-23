@@ -1,0 +1,25 @@
+name: "Feature request / เสนอความสามารถ"
+description: "Describe a viewing or setup need / เสนอการใช้งานที่ต้องการ"
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: "Describe the need without credentials, private RTSP URLs, real camera footage or raw private logs. / ห้ามแนบข้อมูลลับ"
+  - type: input
+    id: version
+    attributes:
+      label: "App version and TV model / เวอร์ชันแอปและรุ่นทีวี"
+  - type: textarea
+    id: need
+    attributes:
+      label: "Problem or need / ปัญหาหรือความต้องการ"
+      description: "Who needs this, and during which remote-control or setup flow?"
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: "Proposed behavior / พฤติกรรมที่เสนอ"
+      description: "Explain the expected result and any alternatives considered."
+    validations:
+      required: true

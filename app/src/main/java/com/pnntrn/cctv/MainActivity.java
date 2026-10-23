@@ -226,15 +226,16 @@ public final class MainActivity extends Activity {
                 : getPreferences(0).getString("location", "");
         for (Location loc : locations) if (loc.id.equals(selected)) current = loc;
         if (current == null && !locations.isEmpty()) current = locations.get(0);
-        if (state == null && current != null) {
-            page = CameraRules.clampPage(current.lastPage, current.cameras.size(), current.grid);
-            for (int i = 0; i < current.cameras.size(); i++) if (current.cameras.get(i).id.equals(current.lastCameraId)) focusedCamera = i;
-            if (!current.cameras.isEmpty()) page = focusedCamera / current.grid;
+        if (current != null) {
+            int savedPage = state == null ? current.lastPage : state.getInt("page", current.lastPage);
+            String savedCameraId = state == null ? current.lastCameraId : state.getString("camera", current.lastCameraId);
+            focusedCamera = TvViewingState.restoreCameraIndex(current.cameras, current.grid, savedPage, savedCameraId);
+            page = focusedCamera / current.grid;
         }
         if (state != null) {
             fullSub = state.getBoolean("fullSub", false);
-            page = state.getInt("page"); focusedCamera = state.getInt("focus");
-            fullscreen = state.getInt("fullscreen", -1);
+            if (current != null && !current.cameras.isEmpty() && state.getInt("fullscreen", -1) >= 0)
+                fullscreen = focusedCamera;
         }
         if (state != null && state.containsKey("update.pending")) {
             try { updater = new AppUpdater(this); updater.restoreState(state); } catch (Exception ignored) { }
@@ -283,7 +284,9 @@ public final class MainActivity extends Activity {
         super.onSaveInstanceState(out);
         if (updater != null) updater.saveState(out);
         out.putString("location", current == null ? "" : current.id);
-        out.putInt("page", page); out.putInt("focus", focusedCamera); out.putInt("fullscreen", fullscreen); out.putBoolean("fullSub", fullSub);
+        out.putString("camera", current != null && focusedCamera >= 0 && focusedCamera < current.cameras.size()
+                ? current.cameras.get(focusedCamera).id : "");
+        out.putInt("page", page); out.putInt("fullscreen", fullscreen); out.putBoolean("fullSub", fullSub);
     }
 
     private void immersive() {
@@ -543,8 +546,9 @@ public final class MainActivity extends Activity {
         if (technician) names[names.length - 1] = getString(R.string.tv_add_location);
         dialogBuilder().setTitle(getString(R.string.tv_locations)).setItems(names, (d, which) -> {
             if (technician && which == locations.size()) editLocation(null);
-            else { current = locations.get(which); page = CameraRules.clampPage(current.lastPage, current.cameras.size(), current.grid); focusedCamera = page * current.grid;
-                for (int i = 0; i < current.cameras.size(); i++) if (current.cameras.get(i).id.equals(current.lastCameraId)) focusedCamera = i;
+            else { current = locations.get(which);
+                focusedCamera = TvViewingState.restoreCameraIndex(current.cameras, current.grid, current.lastPage, current.lastCameraId);
+                page = focusedCamera / current.grid;
                 fullscreen = -1; rememberLocation(); render(); }
         }).show();
     }

@@ -1,14 +1,22 @@
 # CCTV
 
+[![Android build](https://github.com/pnntrn/cctv-tv/actions/workflows/android.yml/badge.svg)](https://github.com/pnntrn/cctv-tv/actions/workflows/android.yml)
+[![Release candidate](https://img.shields.io/github/v/release/pnntrn/cctv-tv?include_prereleases&label=release)](https://github.com/pnntrn/cctv-tv/releases)
+[![APK downloads](https://img.shields.io/github/downloads/pnntrn/cctv-tv/total?label=APK%20downloads)](https://github.com/pnntrn/cctv-tv/releases)
+
+แอปดูกล้อง RTSP สำหรับ Android TV / Google TV ควบคุมด้วยรีโมต เชื่อมต่อกล้องโดยตรง ไม่ต้องมีบัญชีคลาวด์ รองรับ Android 8.0 ขึ้นไป
+
+[การใช้งานภาษาไทย](#วิธีใช้งาน) · [Contributing](CONTRIBUTING.md) · [Release guide](docs/RELEASING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
+
 A lightweight native Android TV / Google TV RTSP viewer for Android 8.0+. Direct connections to Hikvision, VIGI and custom RTSP cameras. No cloud account, streaming server, WebView, analytics, or bundled FFmpeg.
 
 ## Download
 
-[Download the signed 0.4.0 release candidate APK](https://github.com/pnntrn/cctv-apk/releases/download/v0.4.0-rc.1/cctv-release.apk) · [Release notes and checksums](https://github.com/pnntrn/cctv-apk/releases)
+[Download the signed 0.4.1 release candidate APK](https://github.com/pnntrn/cctv-tv/releases/download/v0.4.1-rc.1/cctv-release.apk) · [Release notes and checksums](https://github.com/pnntrn/cctv-tv/releases)
 
 Download `cctv-release.apk` on your Android TV or transfer it to the TV, then open it to install. Updates signed with the retained release key preserve saved profiles. Android 8.0 or later is required.
 
-Version 0.4.0 adds Thai controls, an edge-to-edge camera grid with controls hidden when idle, and separate technician setup. It also includes H.264 streams with missing SDP codec metadata and recorder draft recovery. Actual Hikvision playback and update/profile preservation on the owner's Mi Box still need device verification.
+Version 0.4.1 corrects remembered-camera and grid-page restoration after reordering. It remains a release candidate for physical-device verification. Version 0.4.0 introduced Thai controls, an edge-to-edge camera grid with controls hidden when idle, and separate technician setup. It also includes H.264 streams with missing SDP codec metadata and recorder draft recovery. Actual Hikvision playback and update/profile preservation on the owner's Mi Box still need device verification.
 
 ## Viewing
 
@@ -39,6 +47,8 @@ Sixteen streams requires enough hardware decoders. Start with four tiles on smal
 4. **Test & save** previews the first substream on the TV. **Save channels** becomes available after a decoded video frame.
 5. Use **แก้ไขเครื่องบันทึก** to edit the location's primary NVR, or **ขั้นสูง → เครื่องบันทึกทั้งหมด** for additional recorders. Existing linked camera IDs, names and order stay intact. Channels outside a changed range are removed; new channels are appended.
 
+Recorder drafts retain non-secret form fields across backgrounding and recreation. Passwords are never stored in drafts; backgrounding clears the entered password and preview verification. Back offers Keep draft or Discard. Re-enter technician setup to resume, then test again before saving. A blank password while editing an existing recorder keeps its saved credential.
+
 Canonical preset URLs from the original app are linked to shared recorder settings when the old profile file is loaded. Other URLs stay standalone. Editing a camera's URLs directly makes it standalone, so later recorder edits do not overwrite the custom URLs. Standalone camera forms include a test preview and an explicit show/hide URLs control.
 
 | Device | Substream | Mainstream |
@@ -66,16 +76,16 @@ Authentication rejection, missing stream paths, network reachability, timeouts a
 
 ## APK builds and permanent signing
 
-[GitHub Actions](https://github.com/pnntrn/cctv-apk/actions) produces **cctv-tv-apks** with:
+[GitHub Actions](https://github.com/pnntrn/cctv-tv/actions) produces **cctv-tv-apks** with:
 
 - `cctv-tv-debug.apk`: installable development build.
 - `cctv-release.apk`: installable optimized release **when retained signing is configured**.
 - `cctv-release-unsigned.apk`: build output when signing is not configured; cannot be installed directly.
 - `SHA256SUMS`: hashes of the outputs.
 
-**Automatic CI signing requires one private GitHub repository secret: `CCTV_SIGNING_BUNDLE`.** It contains JSON with `keystore` (base64 PKCS12), `password`, and `alias`. The workflow uses it only in runner temporary storage, masks the password and deletes the keystore before artifact upload. No private key is committed or included in artifacts.
+**Automatic CI signing requires one private GitHub repository secret: `CCTV_SIGNING_BUNDLE`.** It contains JSON with `keystore` (base64 PKCS12), `password`, and `alias`. The workflow uses it only in runner temporary storage, masks the password and deletes the keystore at the end of the build job. No private key is committed or included in artifacts.
 
-The retained key is already configured and privately backed up. Do not generate another key for an existing installation. `scripts/configure-signing.sh` is for initial project bootstrap only. For normal builds, run the workflow and use its signed `cctv-release.apk`.
+The retained key is already configured and privately backed up. Do not generate another key for an existing installation. `scripts/configure-signing.sh` is for initial project bootstrap only. For signed builds, run the workflow manually or push a reviewed tag and use its signed `cctv-release.apk`. Pull-request builds deliberately do not load the signing secret.
 
 The first 0.2.0 release was signed separately with the retained key and its APK v2/v3 signatures verified. Its certificate SHA-256 is `4bb96b0ff9021cc49885f9cdd02d62ec3e58c3704cd65853e8dc2269316c5f9b`. It is approximately 418 KiB. The retained signing identity is now configured in GitHub Actions.
 
@@ -96,12 +106,14 @@ These are native emulator screenshots using deliberately offline fixture cameras
 - `bash scripts/check-core.sh` executes the production Java rules: original 48 checks plus recorder updates, legacy linking, pairing access and RTSP probe tests.
 - GitHub Actions runs unit tests, HTTP setup protocol tests, Android lint and debug/release compilation.
 - A landscape Android emulator smoke job checks navigation, fullscreen/back, settings, recorder editing, saved arrangement and reopen behavior. It publishes native screenshots under **native-ui-screenshots**. Fixture cameras use loopback URLs, with no real camera credentials or footage.
-- [Verified build and emulator run](https://github.com/pnntrn/cctv-apk/actions/runs/39948381626) passed for application commit `85cbc4a9987cefd1324e5c8f1cc38a85da0faa2e`.
+- [Verified build and emulator run](https://github.com/pnntrn/cctv-tv/actions/runs/39948381626) passed for application commit `85cbc4a9987cefd1324e5c8f1cc38a85da0faa2e`.
 - `bash scripts/check-digest.sh` additionally checks MD5 Digest authentication with and without qop, including reserved credential/path characters.
 - A physical TV stick and reachable NVR are still needed to verify real-camera compatibility, Wi-Fi behavior and decoder capacity.
 - [0.4.0 validation](docs/validation-0.4.0.md) records the 24 unit methods, ten native methods, lint/build results and the remaining physical-device checks.
 
-Toolchain: JDK 17, Gradle 8.11.1, AGP 8.9.2, SDK 35, Media3 1.8.0. There is no Gradle wrapper binary; CI installs the pinned Gradle distribution. Local commands: `gradle testDebugUnitTest lintDebug assembleDebug assembleRelease`.
+- [0.4.1 validation](docs/validation-0.4.1.md) records 28 unit methods, 12 native methods and release-verifier checks.
+
+Toolchain: JDK 17, pinned Gradle wrapper 8.11.1, AGP 8.9.2, SDK 35, Media3 1.8.0. Use `./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease` (`.\gradlew.bat` on Windows). See [CONTRIBUTING.md](CONTRIBUTING.md) for all checks. Historical validation above describes 0.4.0; it is not evidence that 0.4.1 physical-device checks have passed.
 
 Settings are encrypted locally using Android Keystore AES-GCM and saved atomically. Backups are disabled. Uninstalling / clearing app data deletes profiles. RTSP itself is normally unencrypted: use a trusted LAN/VPN. This is an Android app, not a Samsung Tizen app.
 
@@ -122,3 +134,8 @@ python3 scripts/publish-update.py path/to/cctv-release.apk --notes "Changes in t
 ```
 
 This verifies the retained certificate and version, then publishes the APK, public release notes and feed to the legacy updater repository. Downloads are pinned to an immutable APK commit. Source is public in this repository; signing files remain private. Publishing to the legacy feed needs write access to `pnntrn/cctv-updates`; it does not require embedding a GitHub token in the app or setting up a cross-repository CI token. Direct APK downloads are also available from this repository's Releases page above.
+
+
+## License and notices
+
+The original CCTV project code currently has no project license; public source availability does not grant a general license to reuse or redistribute it. The owner is choosing the project license. Vendored Media3 code retains its Apache-2.0 license and upstream notices. See [third-party notices](THIRD_PARTY_NOTICES.md).

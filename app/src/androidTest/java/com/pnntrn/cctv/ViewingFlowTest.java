@@ -1,6 +1,9 @@
 package com.pnntrn.cctv;
 
 import android.app.AlertDialog;
+import android.app.Activity;
+import android.app.Application;
+import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.KeyEvent;
 import android.view.View;
@@ -16,6 +19,8 @@ import androidx.test.uiautomator.Until;
 import java.lang.reflect.Field;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.function.Consumer;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import static org.junit.Assert.*;
@@ -37,6 +42,92 @@ public class ViewingFlowTest {
         instrumentation.sendKeySync(new KeyEvent(down, down, KeyEvent.ACTION_DOWN, key, 0));
         SystemClock.sleep(millis);
         instrumentation.sendKeySync(new KeyEvent(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, key, 0));
+    }
+    private static void recreateWithProfileChange(ActivityScenario<MainActivity> scenario, ProfileStore store,
+            Consumer<ArrayList<Location>> change) {
+        Application application = (Application) InstrumentationRegistry.getInstrumentation().getTargetContext().getApplicationContext();
+        boolean[] changed = { false };
+        Application.ActivityLifecycleCallbacks callback = new Application.ActivityLifecycleCallbacks() {
+            @Override public void onActivityDestroyed(Activity activity) {
+                if (!(activity instanceof MainActivity)) return;
+                try {
+                    ArrayList<Location> locations = store.load();
+                    change.accept(locations); store.save(locations); changed[0] = true;
+                } catch (Exception e) { throw new AssertionError(e); }
+            }
+            @Override public void onActivityCreated(Activity activity, Bundle state) { }
+            @Override public void onActivityStarted(Activity activity) { }
+            @Override public void onActivityResumed(Activity activity) { }
+            @Override public void onActivityPaused(Activity activity) { }
+            @Override public void onActivityStopped(Activity activity) { }
+            @Override public void onActivitySaveInstanceState(Activity activity, Bundle state) { }
+        };
+        application.registerActivityLifecycleCallbacks(callback);
+        try { scenario.recreate(); assertTrue("Profile change must occur between Activity instances", changed[0]); }
+        finally { application.unregisterActivityLifecycleCallbacks(callback); }
+    }
+    @Test public void recreationRestoresCameraIdentityAndStaleIdFallsBackToSavedPage() throws Exception {
+        var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        assertTrue(android.os.Build.FINGERPRINT.contains("generic") || android.os.Build.HARDWARE.contains("ranchu") || android.os.Build.HARDWARE.contains("goldfish"));
+        ProfileStore store = new ProfileStore(context);
+        assertTrue("Requires clean emulator profiles", store.load().isEmpty());
+        assertTrue("Requires clean emulator drafts", context.getSharedPreferences("recorder-drafts", 0).getAll().isEmpty());
+        Location location = new Location("Recreation location"); location.grid = 4;
+        for (int i = 0; i < 11; i++) location.cameras.add(new Camera("Recreation camera " + (i + 1), "rtsp://127.0.0.1:9/sub", "rtsp://127.0.0.1:9/main"));
+        ArrayList<Location> locations = new ArrayList<>(); locations.add(location);
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        try {
+            store.save(locations);
+            try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+                assertTrue(device.wait(Until.hasObject(By.descStartsWith("Recreation camera 1,")), 5000));
+                recreateWithProfileChange(scenario, store, saved -> Collections.swap(saved.get(0).cameras, 0, 8));
+                assertTrue(device.wait(Until.hasObject(By.descStartsWith("Recreation camera 1,")), 5000));
+                scenario.onActivity(a -> { assertEquals(8, value(a, "focusedCamera")); assertEquals(2, value(a, "page")); });
+                recreateWithProfileChange(scenario, store, saved -> saved.get(0).cameras.remove(8));
+                assertTrue(device.wait(Until.hasObject(By.descStartsWith("Recreation camera 10,")), 5000));
+                scenario.onActivity(a -> { assertEquals(8, value(a, "focusedCamera")); assertEquals(2, value(a, "page")); });
+            }
+        } finally {
+            store.save(new ArrayList<>());
+            context.getSharedPreferences("recorder-drafts", 0).edit().clear().commit();
+            context.getSharedPreferences("MainActivity", 0).edit().remove("location").commit();
+        }
+    }
+    @Test public void switchingLocationRestoresRememberedCameraOnItsCurrentPage() throws Exception {
+        var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        assertTrue(android.os.Build.FINGERPRINT.contains("generic") || android.os.Build.HARDWARE.contains("ranchu") || android.os.Build.HARDWARE.contains("goldfish"));
+        ProfileStore store = new ProfileStore(context);
+        assertTrue("Requires clean emulator profiles", store.load().isEmpty());
+        assertTrue("Requires clean emulator drafts", context.getSharedPreferences("recorder-drafts", 0).getAll().isEmpty());
+        Location first = new Location("Restore location A"); first.grid = 4;
+        first.cameras.add(new Camera("Initial camera", "rtsp://127.0.0.1:9/sub", "rtsp://127.0.0.1:9/main"));
+        Location second = new Location("Restore location B"); second.grid = 4;
+        for (int i = 0; i < 11; i++) second.cameras.add(new Camera("Restored camera " + (i + 1), "rtsp://127.0.0.1:9/sub", "rtsp://127.0.0.1:9/main"));
+        second.lastPage = 0;
+        second.lastCameraId = second.cameras.get(8).id;
+        ArrayList<Location> locations = new ArrayList<>(); locations.add(first); locations.add(second);
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        try {
+            store.save(locations);
+            try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+                assertTrue(device.wait(Until.hasObject(By.descStartsWith("Initial camera,")), 5000));
+                device.pressMenu();
+                assertTrue(device.wait(Until.hasObject(By.text(context.getString(R.string.tv_viewing_menu))), 3000));
+                device.findObject(By.text(context.getString(R.string.tv_switch_location))).click();
+                assertTrue(device.wait(Until.hasObject(By.text(second.name)), 3000));
+                device.findObject(By.text(second.name)).click();
+                assertTrue(device.wait(Until.hasObject(By.descStartsWith("Restored camera 9,")), 5000));
+                scenario.onActivity(a -> {
+                    assertEquals(second.id, ((Location) value(a, "current")).id);
+                    assertEquals(8, value(a, "focusedCamera"));
+                    assertEquals(2, value(a, "page"));
+                });
+            }
+        } finally {
+            store.save(new ArrayList<>());
+            context.getSharedPreferences("recorder-drafts", 0).edit().clear().commit();
+            context.getSharedPreferences("MainActivity", 0).edit().remove("location").commit();
+        }
     }
     @Test public void idleGeometryRemoteSafetyAndTechnicianLifetime() throws Exception {
         var context = InstrumentationRegistry.getInstrumentation().getTargetContext();

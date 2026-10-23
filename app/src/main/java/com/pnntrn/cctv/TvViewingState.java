@@ -1,5 +1,7 @@
 package com.pnntrn.cctv;
 
+import java.util.List;
+
 /** Remote policy independent of Android, playback and saved profiles. */
 final class TvViewingState {
     static final long MENU_HOLD_MS = 3000;
@@ -15,6 +17,12 @@ final class TvViewingState {
         cancelMenu(); return click;
     }
     void cancelMenu() { menuStarted = -1; held = false; }
+    static int restoreCameraIndex(List<Camera> cameras, int grid, int savedPage, String savedCameraId) {
+        for (int i = 0; i < cameras.size(); i++) {
+            if (cameras.get(i).id.equals(savedCameraId)) return i;
+        }
+        return CameraRules.clampPage(savedPage, cameras.size(), grid) * grid;
+    }
     static int move(int selected, int count, int size, int dx, int dy) {
         if (count <= 0) return 0;
         int columns = (int) Math.sqrt(size), start = selected / size * size;

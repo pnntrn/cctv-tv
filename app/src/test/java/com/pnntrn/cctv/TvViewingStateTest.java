@@ -1,9 +1,31 @@
 package com.pnntrn.cctv;
 
 import org.junit.Test;
+import java.util.ArrayList;
+import java.util.List;
 import static org.junit.Assert.*;
 
 public class TvViewingStateTest {
+    private static List<Camera> cameras(int count) {
+        List<Camera> cameras = new ArrayList<>();
+        for (int i = 0; i < count; i++) cameras.add(new Camera("camera-" + i, "Camera " + i, "", ""));
+        return cameras;
+    }
+    @Test public void rememberedCameraWinsWhenItsCurrentPageDisagreesWithSavedPage() {
+        assertEquals(8, TvViewingState.restoreCameraIndex(cameras(11), 4, 0, "camera-8"));
+        assertEquals(1, TvViewingState.restoreCameraIndex(cameras(11), 4, 2, "camera-1"));
+    }
+    @Test public void missingRememberedCameraRetainsValidSavedPage() {
+        assertEquals(4, TvViewingState.restoreCameraIndex(cameras(11), 4, 1, "removed-camera"));
+    }
+    @Test public void fallbackClampsToPartialLastPageAndFirstPage() {
+        assertEquals(8, TvViewingState.restoreCameraIndex(cameras(11), 4, 2, "removed-camera"));
+        assertEquals(8, TvViewingState.restoreCameraIndex(cameras(11), 4, 99, ""));
+        assertEquals(0, TvViewingState.restoreCameraIndex(cameras(11), 4, -1, ""));
+    }
+    @Test public void emptyLocationRestoresZero() {
+        assertEquals(0, TvViewingState.restoreCameraIndex(cameras(0), 4, 99, "camera-8"));
+    }
     @Test public void menuRequiresContinuousHoldAndNeverOpensBothActions() {
         TvViewingState state = new TvViewingState();
         state.menuDown(100);
