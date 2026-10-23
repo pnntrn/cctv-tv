@@ -18,6 +18,8 @@ Download `cctv-release.apk` on your Android TV or transfer it to the TV, then op
 
 Version 0.4.1 corrects remembered-camera and grid-page restoration after reordering. It remains a release candidate for physical-device verification. Version 0.4.0 introduced Thai controls, an edge-to-edge camera grid with controls hidden when idle, and separate technician setup. It also includes H.264 streams with missing SDP codec metadata and recorder draft recovery. Actual Hikvision playback and update/profile preservation on the owner's Mi Box still need device verification.
 
+[Source and updated usage documentation for this candidate](https://github.com/pnntrn/cctv-tv/tree/v0.4.1-rc.1#readme) · [Review PR #1](https://github.com/pnntrn/cctv-tv/pull/1) (unmerged).
+
 ## Viewing
 
 - The app opens the last location's edge-to-edge camera grid. After four seconds without remote input, controls, camera labels and selection borders hide. Playback errors remain visible.
