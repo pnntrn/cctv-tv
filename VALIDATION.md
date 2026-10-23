@@ -1,30 +1,25 @@
-# Validation — CCTV 0.2
+# Validation — CCTV 0.3.0 (1006)
 
-23 October 2026, Asia/Bangkok.
+## Passed locally
 
-## Local checks
+- Android build: `testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest assembleRelease`, Gradle 8.11.1, JDK 17, Android SDK 35. Build succeeded; lint reported no errors.
+- Five JUnit tests passed, including the core/extended checks, HTTP phone-setup tests and update checks.
+- Standalone checks: 48 core, 31 extended, 22 update checks. Update checks cover HTTPS policy, version/size/digest rules, truncated/oversized/corrupt downloads, cancellation, late connection publication after cancellation, and JSON nesting limits.
+- Independent code review found activity-recreation recovery, shared download-file races, cancellation publication, and JSON recursion concerns. Fixed by saving pending release state and re-verifying on return, serializing transfers with unique temporary files, synchronized cancellation/connection publication, and a JSON depth guard. Android lifecycle/installer behavior still needs device validation.
+- Signed optimized APK: 430,842 bytes; package `com.pnntrn.cctv`, version 0.3.0, code 1006, minimum API 26.
+- APK v2 signature verified. One RSA-3072 signer matches the retained 0.2 release identity: `4bb96b0ff9021cc49885f9cdd02d62ec3e58c3704cd65853e8dc2269316c5f9b`.
+- APK SHA-256: `a43862eee23d484b36ffe4158f9aa561dd32eaa2dded212032777ff1ec591bb0`.
 
-- Original 48 pure Java checks passed.
-- 31 extended checks passed: recorder updates retain IDs/names/order, range changes, custom-camera preservation, legacy URL linking, PIN/session authorization and expiry, safe error categories, unauthenticated and Basic-authenticated RTSP DESCRIBE against loopback fixtures.
-- All Java sources syntax parsed. Android resource XML and workflow YAML parsed.
-- CCTV logo and native grid/fullscreen/recorder screenshots visually inspected.
-- MD5 Digest authentication checked locally against a loopback fixture with and without qop, including escaped username, password, path and query characters (`scripts/check-digest.sh`).
+## GitHub and distribution
 
-## CI verification
+The private source repository is `pnntrn/cctv-apk`. Its `CCTV_SIGNING_BUNDLE` Actions secret is configured with the retained release key. Private signing backups remain outside git.
 
-[Workflow 39948381626](https://github.com/pnntrn/cctv-apk/actions/runs/39948381626) passed for application commit `85cbc4a9987cefd1324e5c8f1cc38a85da0faa2e`:
+[Workflow 39983382213](https://github.com/pnntrn/cctv-apk/actions/runs/39983382213) could not start: GitHub reported failed account payments or a spending limit requiring attention. No build steps ran in that workflow. The new release was built and verified locally instead.
 
-- Android unit tests (including HTTP setup protocol tests), lint, debug/release builds and instrumentation-test APK build succeeded.
-- The native Android landscape emulator smoke test passed: grid focus, fullscreen/back, settings, recorder editing, pairing-dialog dismissal, reorder/save and reopen persistence.
-- Native screenshot output is available in the workflow's `native-ui-screenshots` artifact. The grid, fullscreen and recorder captures were visually checked.
-- Earlier emulator checks caught missing initial focus in touch mode and a malformed wordmark path; both were fixed before this successful run.
+The separate public repository `pnntrn/cctv-updates` contains only APKs and update information. Its `latest.json` references an immutable APK commit. No camera data, source files or signing secrets are published.
 
-The HTTP protocol tests check the public pairing page, rejection of unauthenticated and cross-origin requests, pairing cookies, authenticated settings access, refusal to save without testing, single-use tested-draft proofs and server closure. The emulator flow captures native screens and checks grid/fullscreen/back, recorder settings and arrangement persistence.
+## Remaining validation
 
-## Remaining requirements
-
-- A retained RSA-3072 identity was generated and privately backed up outside git. `CCTV_0.2.apk` (428,093 bytes) was signed and verified using APK signature schemes v2 and v3. Its certificate fingerprint matches the retained identity.
-- Automatic future release signing still requires the `CCTV_SIGNING_BUNDLE` GitHub repository secret. No signing identity is stored in git or public artifacts.
-- The supplied Windows `ui-ux-pro-max` skill path was not accessible in this workspace or installed skill catalogs. The redesign does not claim to apply that skill.
-- Real Hikvision/VIGI playback, phone access from another physical device, power-cycle behavior, performance and maximum simultaneous hardware decoders require the user's TV stick and network.
-- Emulator fixture images show intentional loopback/offline streams, not real CCTV footage.
+- The updated native emulator smoke test was attempted locally without hardware acceleration and has not completed. Do not claim the new updater UI or Android installer flow passed an emulator/device test.
+- The prior 0.2 native flow passed [workflow 39948381626](https://github.com/pnntrn/cctv-apk/actions/runs/39948381626). Existing screenshots use loopback/offline fixtures, not real camera footage.
+- Check update download, source permission, installation confirmation and saved-profile preservation on a real TV stick. Real Hikvision/VIGI playback, phone LAN access, decoder limits and power-cycle behavior also require physical hardware/network testing.

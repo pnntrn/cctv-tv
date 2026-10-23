@@ -125,7 +125,8 @@ public final class AppUpdater implements AutoCloseable {
             }
             Uri uri=Uri.parse("content://"+activity.getPackageName()+".updates/cctv-update.apk");
             Intent intent=new Intent(Intent.ACTION_INSTALL_PACKAGE).setDataAndType(uri,"application/vnd.android.package-archive")
-                    .setClipData(ClipData.newRawUri("CCTV update",uri)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            intent.setClipData(ClipData.newRawUri("CCTV update",uri));
             activity.startActivity(intent);
         }catch(Exception e){error("Android could not open this update. Try downloading it again.",this::download);}
     }
