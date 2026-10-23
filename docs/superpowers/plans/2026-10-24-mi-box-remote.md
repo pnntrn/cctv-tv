@@ -36,7 +36,7 @@
 **Own:** build version, README/CHANGELOG/releasing guidance, workflow release notes, scripts/ui-smoke.sh capture requirements, validation notes and repository publication.
 - [x] Bump0.4.2/code1010 and update user instructions/downloads to v0.4.2-rc.1; retain older validation history.
 - [x] Run full build/unit/lint/core/digest/updater/release-verifier/native checks, inspect screenshots, review final diff.
-- [ ] After local checks and review, push PR and tag the same verified source; run PR/tag CI in parallel. The tag workflow signs and publishes only after its build and native checks pass. Verify public APK/hash/certificate/version/tag and main download link; leave PR unmerged.
+- [x] After local checks and review, push PR and tag the same verified source; run PR/tag CI in parallel. The tag workflow signs and publishes only after its build and native checks pass. Verify public APK/hash/certificate/version/tag and main download link; leave PR unmerged.
 
 ## Execution rulings
 

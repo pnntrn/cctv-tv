@@ -3,6 +3,8 @@ package com.pnntrn.cctv;
 import android.app.AlertDialog;
 import android.app.Activity;
 import android.app.Application;
+import android.accessibilityservice.AccessibilityServiceInfo;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.KeyEvent;
@@ -16,6 +18,8 @@ import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.uiautomator.By;
 import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.Until;
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry;
+import androidx.test.runner.lifecycle.Stage;
 import java.lang.reflect.Field;
 import java.io.File;
 import java.util.ArrayList;
@@ -40,7 +44,9 @@ public class ViewingFlowTest {
     private static String inputState(MainActivity activity) {
         StringBuilder state = new StringBuilder("activityFocus=").append(activity.hasWindowFocus())
                 .append(", started=").append(value(activity, "started"))
-                .append(", managing=").append(value(activity, "managing"));
+                .append(", managing=").append(value(activity, "managing"))
+                .append(", lifecycle=").append(ActivityLifecycleMonitorRegistry.getInstance().getLifecycleStageOf(activity))
+                .append(", finishing=").append(activity.isFinishing()).append(", destroyed=").append(activity.isDestroyed());
         for (String name : new String[]{"viewingMenu", "technicianConfirmation"}) {
             AlertDialog dialog = (AlertDialog) value(activity, name);
             state.append(", ").append(name).append("=").append(dialog == null ? "absent"
@@ -53,6 +59,64 @@ public class ViewingFlowTest {
                     .append("/pending:").append(value(entry.getValue(), "pendingRelease")).append("]");
         }
         return state.toString();
+    }
+    private static String timeoutState(ActivityScenario<MainActivity> scenario, String input) {
+        StringBuilder state = new StringBuilder(input).append(", scenario=").append(scenario.getState());
+        scenario.onActivity(activity -> {
+            state.append(", trackedDialogs=[");
+            for (Object tracked : new ArrayList<>((java.util.Collection<?>) value(activity, "dialogs"))) {
+                AlertDialog dialog = (AlertDialog) tracked;
+                state.append("{showing:").append(dialog.isShowing())
+                        .append("/focus:").append(dialog.getWindow().getDecorView().hasWindowFocus())
+                        .append("/title:").append(dialog.getWindow().getAttributes().getTitle())
+                        .append("/flags:").append(Integer.toHexString(dialog.getWindow().getAttributes().flags)).append("}");
+            }
+            state.append("], activities=[");
+            var monitor = ActivityLifecycleMonitorRegistry.getInstance();
+            for (Stage stage : Stage.values()) for (Activity tracked : monitor.getActivitiesInStage(stage)) {
+                state.append("{").append(tracked.getClass().getName()).append("/package:").append(tracked.getPackageName())
+                        .append("/stage:").append(stage).append("/focus:").append(tracked.hasWindowFocus())
+                        .append("/finishing:").append(tracked.isFinishing()).append("/destroyed:").append(tracked.isDestroyed()).append("}");
+            }
+            state.append("]");
+        });
+        state.append(", ").append(systemWindowState());
+        return state.toString();
+    }
+    private static String systemWindowState() {
+        var instrumentation = InstrumentationRegistry.getInstrumentation();
+        var automation = instrumentation.getUiAutomation();
+        var service = automation.getServiceInfo();
+        int originalFlags = service.flags;
+        StringBuilder state = new StringBuilder();
+        try {
+            service.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
+            automation.setServiceInfo(service);
+            state.append("currentPackage=").append(UiDevice.getInstance(instrumentation).getCurrentPackageName());
+            var activeRoot = automation.getRootInActiveWindow();
+            if (activeRoot == null) state.append(", activeRoot=absent");
+            else {
+                state.append(", activeRoot={package:").append(activeRoot.getPackageName()).append("/class:")
+                        .append(activeRoot.getClassName()).append("/window:").append(activeRoot.getWindowId()).append("}");
+                activeRoot.recycle();
+            }
+            state.append(", systemWindows=[");
+            for (var window : automation.getWindows()) {
+                state.append("{id:").append(window.getId()).append("/title:").append(window.getTitle())
+                        .append("/type:").append(window.getType()).append("/focus:").append(window.isFocused())
+                        .append("/active:").append(window.isActive());
+                var root = window.getRoot();
+                state.append("/rootPackage:").append(root == null ? "absent" : root.getPackageName()).append("}");
+                if (root != null) root.recycle();
+                window.recycle();
+            }
+            return state.append("]").toString();
+        } catch (RuntimeException failure) {
+            return state.append("/windowDiagnosticsError:").append(failure).toString();
+        } finally {
+            service.flags = originalFlags;
+            automation.setServiceInfo(service);
+        }
     }
     private static void awaitInputFocus(ActivityScenario<MainActivity> scenario, InputWindow window) {
         long deadline = SystemClock.uptimeMillis() + 5000;
@@ -70,14 +134,36 @@ public class ViewingFlowTest {
             if (ready[0]) return;
             SystemClock.sleep(25);
         } while (SystemClock.uptimeMillis() < deadline);
-        fail("Expected " + window + " input focus within 5000 ms; " + state[0]);
+        fail("Expected " + window + " input focus within 5000 ms; " + timeoutState(scenario, state[0]));
     }
     private static void awaitText(ActivityScenario<MainActivity> scenario, UiDevice device, String text,
             long timeout, String message) {
         if (device.wait(Until.hasObject(By.text(text)), timeout)) return;
         String[] state = { "Activity callback not reached" };
         scenario.onActivity(activity -> state[0] = inputState(activity));
-        fail(message + "; " + state[0]);
+        fail(message + "; " + timeoutState(scenario, state[0]));
+    }
+    private static void awaitState(ActivityScenario<MainActivity> scenario, Lifecycle.State expected) {
+        long deadline = SystemClock.uptimeMillis() + 5000;
+        do {
+            if (scenario.getState() == expected) return;
+            SystemClock.sleep(25);
+        } while (SystemClock.uptimeMillis() < deadline);
+        String[] input = { "Activity callback not reached" };
+        scenario.onActivity(activity -> input[0] = inputState(activity));
+        fail("Expected lifecycle " + expected + " within 5000 ms; " + timeoutState(scenario, input[0]));
+    }
+    private static void homeAndResume(ActivityScenario<MainActivity> scenario, UiDevice device) {
+        MainActivity[] original = new MainActivity[1];
+        scenario.onActivity(activity -> original[0] = activity);
+        assertTrue("Home must background the current app", device.pressHome());
+        awaitState(scenario, Lifecycle.State.CREATED);
+        var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        context.startActivity(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+        awaitState(scenario, Lifecycle.State.RESUMED);
+        awaitInputFocus(scenario, InputWindow.ACTIVITY);
+        scenario.onActivity(activity -> assertSame("Returning from Home must reuse the existing Activity", original[0], activity));
     }
     private static void hold(int key, long millis) {
         var instrumentation = InstrumentationRegistry.getInstrumentation();
@@ -253,17 +339,29 @@ public class ViewingFlowTest {
             scenario.onActivity(a -> { assertNull(value(a, "technicianConfirmation")); assertFalse((Boolean) value(a, "managing")); });
 
             long backgroundOk = keyDown(scenario, InputWindow.ACTIVITY, KeyEvent.KEYCODE_DPAD_CENTER);
-            scenario.moveToState(Lifecycle.State.CREATED); scenario.moveToState(Lifecycle.State.RESUMED);
+            homeAndResume(scenario, device);
             sendKey(backgroundOk, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER, 0, 0);
             SystemClock.sleep(1200);
-            scenario.onActivity(a -> { assertNull(value(a, "viewingMenu")); assertEquals(-1, value(a, "fullscreen")); });
+            scenario.onActivity(a -> {
+                assertNull(value(a, "viewingMenu")); assertNull(value(a, "technicianConfirmation"));
+                assertEquals(-1, value(a, "fullscreen")); assertFalse((Boolean) value(a, "managing"));
+                assertFalse((Boolean) value(a, "technician")); assertNull(value(a, "recorderEditor"));
+                for (Object tracked : (java.util.Collection<?>) value(a, "dialogs"))
+                    assertFalse("The old OK release must not open a popup", ((AlertDialog) tracked).isShowing());
+            });
 
             hold(scenario, InputWindow.ACTIVITY, KeyEvent.KEYCODE_DPAD_CENTER, 1100);
             long backgroundBack = keyDown(scenario, InputWindow.VIEWING_MENU, KeyEvent.KEYCODE_BACK);
-            scenario.moveToState(Lifecycle.State.CREATED); scenario.moveToState(Lifecycle.State.RESUMED);
+            homeAndResume(scenario, device);
             sendKey(backgroundBack, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK, 0, 0);
             SystemClock.sleep(3200);
-            scenario.onActivity(a -> { assertNull(value(a, "viewingMenu")); assertNull(value(a, "technicianConfirmation")); assertFalse((Boolean) value(a, "technician")); });
+            scenario.onActivity(a -> {
+                assertNull(value(a, "viewingMenu")); assertNull(value(a, "technicianConfirmation"));
+                assertFalse((Boolean) value(a, "technician")); assertFalse((Boolean) value(a, "managing"));
+                assertNull(value(a, "recorderEditor"));
+                for (Object tracked : (java.util.Collection<?>) value(a, "dialogs"))
+                    assertFalse("The old Back release must not open a popup", ((AlertDialog) tracked).isShowing());
+            });
         } finally {
             store.save(new ArrayList<>());
             context.getSharedPreferences("recorder-drafts", 0).edit().clear().commit();
