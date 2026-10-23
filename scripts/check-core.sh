@@ -12,5 +12,12 @@ fi
   app/src/main/java/com/pnntrn/cctv/CameraRules.java \
   app/src/main/java/com/pnntrn/cctv/Camera.java \
   app/src/main/java/com/pnntrn/cctv/Location.java \
-  app/src/test/java/com/pnntrn/cctv/CoreChecks.java
+  app/src/main/java/com/pnntrn/cctv/Nvr.java \
+  app/src/main/java/com/pnntrn/cctv/PlaybackFailure.java \
+  app/src/main/java/com/pnntrn/cctv/RtspProbe.java \
+  app/src/main/java/com/pnntrn/cctv/PairingSession.java \
+  app/src/test/java/com/pnntrn/cctv/CoreChecks.java \
+  app/src/test/java/com/pnntrn/cctv/ExtendedChecks.java
 java -cp "$test_classes_dir" com.pnntrn.cctv.CoreChecks
+
+java -cp "$test_classes_dir" com.pnntrn.cctv.ExtendedChecks

@@ -1,94 +1,79 @@
-# CCTV TV
+# CCTV
 
-A small native Android TV app for direct live RTSP viewing. Built for a D-pad remote, Android TV / Google TV boxes and sticks running Android 8.0 or newer. No server, cloud login, WebView, account service, or bundled FFmpeg.
+A lightweight native Android TV / Google TV RTSP viewer for Android 8.0+. Direct connections to Hikvision, VIGI and custom RTSP cameras. No cloud account, streaming server, WebView, analytics, or bundled FFmpeg.
 
-[Download the APK bundle](https://github.com/pnntrn/cctv-apk/actions/runs/39844447943/artifacts/12454414014), unzip it, and install **cctv-tv-debug.apk** for testing. This private repository requires GitHub sign-in. The unsigned release APK cannot be installed directly.
+## Viewing
 
-## What it does
+- Multiple locations; 1, 4, 9 or 16 live substreams per page; up to 256 saved cameras per location.
+- D-pad highlights a tile. **OK** opens the mainstream. **Back** restores the substream grid and focused camera.
+- Left/right changes fullscreen camera. OK toggles main/substream. Mainstream failure automatically falls back once to the substream.
+- Fullscreen labels hide after four seconds; remote input reveals them again. Playback errors remain visible.
+- The last location, camera and grid page are remembered after a normal close / reopen.
+- **Arrange → OK to pick up → arrows → OK to drop → Save order**. Back cancels arrangement. Settings also has a direct numbered move action.
+- Only the current page plays. Fullscreen releases all grid decoders. Settings, arrangement and backgrounding release playback. Audio is disabled in this version.
+- Focus rings, 48dp controls, more TV-safe spacing, a compact live header and a native CCTV wordmark/icon.
 
-- Save multiple locations, each with its own cameras and grid size.
-- Add Hikvision NVR channels or VIGI NVR channels in one form: IP/hostname, port, username, password, first channel and channel count.
-- Add VIGI standalone cameras or any camera with separate custom substream/mainstream RTSP URLs.
-- Show 1, 4, 9 or 16 live **substreams** per page; page through additional cameras (up to 256 saved per location).
-- Highlight a tile using the remote or mouse hover. **OK** opens its **mainstream** fullscreen. Hover only highlights; it does not start an extra stream.
-- **Back** returns to the grid and focuses the camera you were watching. **Left/Right** in fullscreen switches cameras. **OK** in fullscreen toggles sub/main quality.
-- Arrange cameras with a remote: choose **Arrange**, **OK** to pick up, arrows to swap positions, **OK** to drop, then **Save order**. **Back** cancels the changes. Streams are stopped during arrangement.
-- Camera options also support moving directly to a numbered position, editing URLs/names, and deletion. Names and URLs are kept when order changes.
-- Reconnect offline streams with 2–30 second backoff. A frame watchdog retries stalled connections. Decoder errors show a suggestion to reduce the tile count.
-- Grid audio is disabled; fullscreen is also silent in this version.
-- Settings and credentials are encrypted locally using Android Keystore AES-GCM and saved atomically. Android backups are disabled. Uninstalling / clearing app data removes profiles.
+Sixteen streams requires enough hardware decoders. Start with four tiles on smaller sticks. Suggested initial substream encoding: H.264, roughly 640×360 or 640×480, 5–10 fps and 256–512 kbps; tune the NVR itself. No measured stream-count or latency guarantee is made.
 
-## Remote controls
+## Setup and recorder editing
 
-| Control | Grid | Fullscreen |
-| --- | --- | --- |
-| D-pad | Move focus | Left/right changes camera |
-| OK | Open mainstream | Toggle main/substream |
-| Hold OK | Camera options | — |
-| Back | Cancel arrangement, or exit prompt | Return to grid |
-| Menu (if available) | Open camera manager | — |
-| Prev / Next buttons | Change grid page | — |
+1. Create a location, such as **Shop**.
+2. Open **Settings → + Add** and choose Hikvision NVR, VIGI NVR, VIGI standalone camera, or Custom RTSP.
+3. Enter the recorder address, RTSP port, credentials and channel range.
+4. **Test & save** previews the first substream on the TV. **Save channels** becomes available after a decoded video frame.
+5. Use **Settings → Recorders** to edit an entire recorder's IP, port, credentials and channel range. Existing linked camera IDs, names and order stay intact. Channels outside a changed range are removed; new channels are appended.
 
-Every feature is reachable through visible controls; a Menu key and number keys are optional.
-
-## First setup
-
-1. Add a location, for example **Shop**.
-2. Open **+ Add** and select **Hikvision NVR** or **VIGI NVR**.
-3. Enter the NVR's network address, RTSP port (usually 554), and its viewing credentials. Select the first channel and how many channels to add.
-4. Select **Live**. The default 4-tile grid uses substreams. Choose **16 tiles** from Layout if your hardware supports it.
-5. Focus a camera and press OK to view its mainstream. Press Back for the grid.
-
-Use a camera/NVR viewing-only account when supported. The TV needs a direct network route to the camera/NVR: the same LAN or a VPN. This app does not use Hik-Connect or VIGI cloud relay.
-
-### RTSP presets
+Canonical preset URLs from the original app are linked to shared recorder settings when the old profile file is loaded. Other URLs stay standalone. Editing a camera's URLs directly makes it standalone, so later recorder edits do not overwrite the custom URLs. Standalone camera forms include a test preview and an explicit show/hide URLs control.
 
 | Device | Substream | Mainstream |
 | --- | --- | --- |
 | Hikvision NVR channel 1 | `/Streaming/Channels/102` | `/Streaming/Channels/101` |
 | Hikvision NVR channel 16 | `/Streaming/Channels/1602` | `/Streaming/Channels/1601` |
 | VIGI NVR channel 1 | `/live/1/2/avm` | `/live/1/1/avm` |
-| VIGI camera (its own IP) | `/stream2` | `/stream1` |
+| VIGI standalone camera | `/stream2` | `/stream1` |
 
-URLs have the form `rtsp://USERNAME:PASSWORD@HOST:554/PATH`. The setup form encodes reserved characters in credentials automatically. In custom URLs, percent-encode characters such as `@`, `#`, `:` and spaces in usernames/passwords.
+VIGI NVR RTSP requires compatible firmware and an enabled server. Camera paths `/stream1` and `/stream2` are not NVR channel paths. Custom URLs support firmware-specific alternatives. Credentials entered in the preset form are escaped automatically.
 
-VIGI NVR RTSP requires supported firmware and an enabled RTSP server. Camera `/stream1` and `/stream2` paths are **not** NVR channel paths. If the preset differs on your firmware, edit each camera's two URLs. TP-Link documents the NVR server at [FAQ 4677](https://www.tp-link.com/pt/support/faq/4677/) and standalone cameras at [FAQ 3718](https://www.tp-link.com/us/support/faq/3718/). Hikvision channel URL examples are described in [Hikvision RTSP guidance](https://supportusa.hikvision.com/a/solutions/articles/17000129064).
+## Set up from your phone
 
-### Fast settings for small TV sticks
+1. On the TV open **Settings → Set up from phone**.
+2. On a phone on the same trusted LAN/Wi-Fi, open the address shown on the TV.
+3. Enter the six-digit pairing code. One phone is allowed per session; five failed PIN attempts close access. The session expires after ten minutes, closes when the TV dialog closes, and stops when the app backgrounds.
+4. Add or edit a recorder or standalone camera. Blank saved passwords/URLs keep their existing values; saved passwords and RTSP URLs are never sent back to the phone.
+5. **Test connection** checks RTSP authentication and whether a video stream exists. It is a protocol check, not a decoder/picture guarantee. **Save to TV** uses a single-use proof for that exact tested configuration. A TV preview verifies decoding separately.
 
-Start with **4 tiles**. For a larger grid, configure camera substreams around **640×360 or 640×480, H.264, 5–10 fps, 256–512 kbps** as a starting point; tune for your picture quality and network. The app does not change NVR encoding settings.
+This is a temporary local HTTP service, not a cloud service. Use a trusted network: credentials travel over that local connection. The service uses an origin/host check, same-site HTTP-only session cookies, a bounded request size and one paired IP. It has no file browsing, cloud relay, open CORS or background setup server. Closing pairing discards pending drafts and invalidates the session.
 
-16 simultaneous videos is a hardware capability, not a guarantee: some sticks can decode only a few streams at once. A 16-tile grid at 512 kbps per camera is roughly 8 Mbps of video payload, but decoder count and resolution can be the limiting factors before network bandwidth. If tiles fail, use 4 tiles and page through cameras. H.264 is the compatibility baseline. Other formats depend on the bundled Media3 version, the camera's RTSP payload, and the device codec; this has not yet been verified on hardware.
+## Error messages
 
-Only the current page plays. Entering fullscreen releases **all** grid players, then opens one stream. Back releases the fullscreen player and rebuilds the substream page. Camera manager screens, arrangement screens, and backgrounded activities release playback. TCP is the default; Location settings can select UDP with Media3's TCP fallback.
+Authentication rejection, missing stream paths, network reachability, timeouts and decoder limits get separate messages. Retryable failures back off from 2 to 30 seconds. Authentication/path/decoder failures stop retrying until playback is reopened or settings change. Raw exceptions and credential-bearing URLs are not intentionally shown or logged by this app; system/media library diagnostics should still be treated as sensitive.
 
-## Build and install
+## APK builds and permanent signing
 
-Pinned toolchain: **JDK 17**, **Gradle 8.11.1**, **Android Gradle Plugin 8.9.2**, **Android SDK 35**, **Media3 1.8.0**. The media dependencies are deliberately pinned; upgrade and test together.
+[GitHub Actions](https://github.com/pnntrn/cctv-apk/actions) produces **cctv-tv-apks** with:
 
-Open the project in Android Studio and select a matching Gradle installation, or install Gradle 8.11.1 and SDK 35 and run:
+- `cctv-tv-debug.apk`: installable development build.
+- `cctv-release.apk`: installable optimized release **when retained signing is configured**.
+- `cctv-release-unsigned.apk`: build output when signing is not configured; cannot be installed directly.
+- `SHA256SUMS`: hashes of the outputs.
 
-```sh
-bash scripts/check-core.sh
-gradle testDebugUnitTest lintDebug assembleDebug assembleRelease
-```
+**Permanent signing requires one private GitHub repository secret: `CCTV_SIGNING_BUNDLE`.** It contains JSON with `keystore` (base64 PKCS12), `password`, and `alias`. The workflow uses it only in runner temporary storage, masks the password and deletes the keystore before artifact upload. No private key is committed or included in artifacts.
 
-There is no Gradle wrapper binary in this source package. Android Studio can use a local Gradle installation; GitHub Actions installs the exact Gradle version automatically.
+On a trusted computer with JDK 17, Python 3 and an authenticated GitHub CLI, run `bash scripts/configure-signing.sh` once. It creates a retained RSA key, keeps a private backup outside this project, and saves the repository secret without printing it. Retain that backup securely; never replace the key during normal updates. Then run the workflow again and install `cctv-release.apk`.
 
-The GitHub workflow runs on pushes to `main`, pull requests, version tags, and manual dispatch. In **Actions → Build Android TV APK → successful run → Artifacts**, download **cctv-tv-apks**:
+The old development build used an ephemeral debug key. Moving from that build to the retained release key may require a one-time uninstall, which removes local profiles. Subsequent releases signed with the retained key install as updates. Debug builds continue using development keys and are not the supported upgrade channel. CI version codes increase with workflow run number.
 
-- `cctv-tv-debug.apk`: signed development APK, installable for device testing.
-- `cctv-tv-release-unsigned.apk`: shrunk release output; **must be signed before installation**.
-- `SHA256SUMS`: hashes of both outputs.
+## Validation
 
-The debug key on a hosted runner is temporary. APKs from different runs may require uninstalling the previous build, which erases profiles. Before distributing regular updates, create a private release signing key, retain it securely, and configure CI secrets/signing. No private signing key is included here.
+- `bash scripts/check-core.sh` executes the production Java rules: original 48 checks plus recorder updates, legacy linking, pairing access and RTSP probe tests.
+- GitHub Actions runs unit tests, HTTP setup protocol tests, Android lint and debug/release compilation.
+- A landscape Android emulator smoke job checks navigation, fullscreen/back, settings, recorder editing, saved arrangement and reopen behavior. It publishes native screenshots under **native-ui-screenshots**. Fixture cameras use loopback URLs, with no real camera credentials or footage.
+- A physical TV stick and reachable NVR are still needed to verify real-camera compatibility, Wi-Fi behavior and decoder capacity.
 
-Install the development APK with Android TV's package installer (allow installation from your chosen file manager), or from a trusted computer using `adb install path/to/cctv-tv-debug.apk`. It appears as **CCTV TV** in the TV launcher. This is an Android app, not a Samsung Tizen app.
+Toolchain: JDK 17, Gradle 8.11.1, AGP 8.9.2, SDK 35, Media3 1.8.0. There is no Gradle wrapper binary; CI installs the pinned Gradle distribution. Local commands: `gradle testDebugUnitTest lintDebug assembleDebug assembleRelease`.
 
-## Verification status
+Settings are encrypted locally using Android Keystore AES-GCM and saved atomically. Backups are disabled. Uninstalling / clearing app data deletes profiles. RTSP itself is normally unencrypted: use a trusted LAN/VPN. This is an Android app, not a Samsung Tizen app.
 
-See [VALIDATION.md](VALIDATION.md) for executed checks, build limitations, and device acceptance steps. GitHub Actions has successfully run the unit tests, Android lint, and both APK builds. Real-camera playback and TV hardware behavior still need device testing.
+## Branding
 
-## Privacy
-
-All viewing connects directly to the RTSP URLs you configure. No analytics, backend, advertising, location permission, scanning, or file-storage permission. RTSP is normally unencrypted in transit: use your trusted LAN/VPN. Credentials are hidden in editable URL fields by default. This app does not intentionally log stream URLs or show raw player exceptions; the device/media libraries may produce diagnostic logs, so treat system logs as sensitive.
+The CCTV camera-grid mark, CCTV wordmark, TV banner and adaptive launcher icon are native vector assets. Editable artwork is in `brand/cctv-logo.svg`, with a PNG preview alongside it.

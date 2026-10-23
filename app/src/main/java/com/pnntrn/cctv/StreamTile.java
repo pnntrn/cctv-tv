@@ -27,6 +27,16 @@ public final class StreamTile extends FrameLayout {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final SurfaceView surface;
     private final TextView status;
+    private final TextView title;
+    public interface Listener {
+        void onFirstFrame();
+        void onFailure(PlaybackFailure reason);
+    }
+    private Listener listener;
+    private boolean autoRetry = true;
+    public void setListener(Listener listener) { this.listener = listener; }
+    public void setAutoRetry(boolean enabled) { autoRetry = enabled; }
+    public void setChromeVisible(boolean visible) { title.setVisibility(visible ? VISIBLE : GONE); }
     private final String url;
     private final boolean tcp;
     private final boolean main;
@@ -50,7 +60,7 @@ public final class StreamTile extends FrameLayout {
         LayoutParams state = new LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
         state.setMargins(dp(8), dp(8), dp(8), 0);
         addView(status, state);
-        TextView title = label(camera.name + (main ? "   •   MAIN" : "   •   SUB"), main ? 18 : 13);
+        title = label(camera.name + (main ? "   •   MAIN" : "   •   SUB"), main ? 18 : 13);
         LayoutParams caption = new LayoutParams(-1, -2, Gravity.BOTTOM);
         addView(title, caption);
         setContentDescription(camera.name + (main ? ", mainstream fullscreen" : ", press OK to view mainstream, hold OK for options"));
@@ -94,6 +104,7 @@ public final class StreamTile extends FrameLayout {
                 @Override public void onRenderedFirstFrame() {
                     if (!current()) return;
                     failures = 0; status.setVisibility(GONE);
+                    if (listener != null) listener.onFirstFrame();
                 }
                 @Override public void onVideoSizeChanged(VideoSize size) {
                     if (current() && size.height > 0) {
@@ -103,17 +114,10 @@ public final class StreamTile extends FrameLayout {
                 }
                 @Override public void onPlayerError(PlaybackException error) {
                     if (!current()) return;
-                    int code = error.errorCode;
-                    if (code >= 4000 && code < 5000) {
-                        generation++;
-                        handler.removeCallbacksAndMessages(null);
-                        releasePlayer();
-                        status.setVisibility(VISIBLE);
-                        status.setText("Decoder unavailable • try fewer tiles or H.264");
-                    } else retry();
+                    fail(PlaybackFailure.classify(error, error.errorCode));
                 }
                 @Override public void onPlaybackStateChanged(int state) {
-                    if (current() && state == Player.STATE_ENDED) retry();
+                    if (current() && state == Player.STATE_ENDED) fail(PlaybackFailure.NETWORK);
                 }
             });
             player.setMediaSource(new RtspMediaSource.Factory().setForceUseRtpTcp(tcp)
@@ -123,24 +127,33 @@ public final class StreamTile extends FrameLayout {
             handler.postDelayed(() -> watchdog(token), 5000);
         } catch (RuntimeException e) {
             // Never put exception text or authenticated RTSP URLs into UI/logs.
-            retry();
+            fail(PlaybackFailure.classify(e, 0));
         }
     }
 
     private void watchdog(int token) {
         if (released || token != generation) return;
-        if (SystemClock.elapsedRealtime() - lastFrame > 25000) { retry(); return; }
+        if (SystemClock.elapsedRealtime() - lastFrame > (main ? 12000 : 25000)) { fail(PlaybackFailure.TIMEOUT); return; }
         handler.postDelayed(() -> watchdog(token), 5000);
     }
 
-    private void retry() {
+    private void fail(PlaybackFailure reason) {
+        if (released) return;
+        if (listener != null) listener.onFailure(reason);
+        if (released) return;
+        if (autoRetry && reason.retry) { retry(reason.message); return; }
+        generation++; handler.removeCallbacksAndMessages(null); releasePlayer();
+        status.setVisibility(VISIBLE); status.setText(reason.message);
+    }
+
+    private void retry(String reason) {
         if (released) return;
         generation++;
         handler.removeCallbacksAndMessages(null);
         releasePlayer();
         long delay = Math.min(30000, 2000L << Math.min(failures++, 4));
         status.setVisibility(VISIBLE);
-        status.setText("Offline • retry in " + delay / 1000 + "s");
+        status.setText(reason + " • retry in " + delay / 1000 + "s");
         handler.postDelayed(this::connect, delay);
     }
 

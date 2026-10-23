@@ -13,6 +13,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -30,13 +31,38 @@ jobs:
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - name: Check core behavior
         run: bash scripts/check-core.sh
+      - name: Load retained release signing key
+        env:
+          CCTV_SIGNING_BUNDLE: ${{ secrets.CCTV_SIGNING_BUNDLE }}
+        run: |
+          python3 - <<'PYCODE'
+          import os,json,base64,pathlib
+          value=os.environ.get('CCTV_SIGNING_BUNDLE','')
+          if not value:
+              print('::notice::Release signing needs the CCTV_SIGNING_BUNDLE repository secret. Debug APK remains available.')
+          else:
+              data=json.loads(value)
+              password=data['password']; alias=data['alias']
+              if any(c in password+alias for c in '\r\n'):
+                  raise ValueError('Invalid signing settings')
+              print('::add-mask::'+password)
+              path=pathlib.Path(os.environ['RUNNER_TEMP'])/'cctv-release.p12'
+              path.write_bytes(base64.b64decode(data['keystore'],validate=True))
+              path.chmod(0o600)
+              with open(os.environ['GITHUB_ENV'],'a') as f:
+                  f.write(f'CCTV_KEYSTORE_PATH={path}\nCCTV_STORE_PASSWORD={password}\nCCTV_KEY_ALIAS={alias}\n')
+          PYCODE
       - name: Test, lint, and build
-        run: gradle --no-daemon testDebugUnitTest lintDebug assembleDebug assembleRelease
+        run: gradle --no-daemon testDebugUnitTest lintDebug assembleDebug assembleRelease assembleDebugAndroidTest
       - name: Collect APKs
         run: |
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk dist/cctv-tv-debug.apk
-          cp app/build/outputs/apk/release/app-release-unsigned.apk dist/cctv-tv-release-unsigned.apk
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            cp app/build/outputs/apk/release/app-release.apk dist/cctv-release.apk
+          else
+            cp app/build/outputs/apk/release/app-release-unsigned.apk dist/cctv-release-unsigned.apk
+          fi
           sha256sum dist/*.apk > dist/SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
@@ -45,6 +71,16 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-apks
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          retention-days: 7
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/cctv-release.p12"
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-and-lint-results
@@ -52,3 +88,38 @@ jobs:
             app/build/reports/
             app/build/test-results/
           if-no-files-found: ignore
+
+  ui-smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui-test-apks
+          path: test-apks
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: bash scripts/ui-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-ui-screenshots
+          path: ui-results/
+          if-no-files-found: ignore
+          retention-days: 30

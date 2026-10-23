@@ -7,12 +7,23 @@ android {
         applicationId 'com.pnntrn.cctv'
         minSdk 26
         targetSdk 35
-        versionCode 1
-        versionName '0.1.0'
-        testInstrumentationRunner 'android.test.InstrumentationTestRunner'
+        versionCode 1000 + (System.getenv('GITHUB_RUN_NUMBER') ?: '2').toInteger()
+        versionName '0.2.0'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    signingConfigs {
+        if (System.getenv('CCTV_KEYSTORE_PATH')) {
+            retained {
+                storeFile file(System.getenv('CCTV_KEYSTORE_PATH'))
+                storePassword System.getenv('CCTV_STORE_PASSWORD')
+                keyAlias System.getenv('CCTV_KEY_ALIAS')
+                keyPassword System.getenv('CCTV_STORE_PASSWORD')
+            }
+        }
     }
     buildTypes {
         release {
+            if (System.getenv('CCTV_KEYSTORE_PATH')) signingConfig signingConfigs.retained
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -30,4 +41,9 @@ dependencies {
     implementation 'androidx.media3:media3-exoplayer:1.8.0'
     implementation 'androidx.media3:media3-exoplayer-rtsp:1.8.0'
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test:core:1.6.1'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.3.0'
 }

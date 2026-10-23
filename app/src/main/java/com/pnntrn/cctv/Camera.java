@@ -7,6 +7,8 @@ public final class Camera {
     public String name;
     public String subUrl;
     public String mainUrl;
+    public String deviceId = "";
+    public int channel;
 
     public Camera(String name, String subUrl, String mainUrl) {
         this(UUID.randomUUID().toString(), name, subUrl, mainUrl);

@@ -6,3 +6,6 @@ local.properties
 *.keystore
 *.iml
 .DS_Store
+
+*.p12
+signing.json
