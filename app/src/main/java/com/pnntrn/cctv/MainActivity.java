@@ -50,6 +50,7 @@ public final class MainActivity extends Activity {
     private String pairingLocation = "";
     private StreamTile fullTile;
     private TextView fullHelp;
+    private Toast activeToast;
     private final Runnable hideChrome = () -> {
         if (fullTile != null) fullTile.setChromeVisible(false);
         if (fullHelp != null) fullHelp.setVisibility(View.GONE);
@@ -109,7 +110,7 @@ public final class MainActivity extends Activity {
             if (focusedCamera >= 0 && focusedCamera < current.cameras.size()) current.lastCameraId = current.cameras.get(focusedCamera).id;
             try { store.save(locations); } catch (Exception ignored) { }
         }
-        started = false; closePairing(); releaseStreams(); ui.removeCallbacksAndMessages(null); super.onStop();
+        started = false; if (activeToast != null) activeToast.cancel(); closePairing(); releaseStreams(); ui.removeCallbacksAndMessages(null); super.onStop();
     }
     @Override protected void onDestroy() { releaseStreams(); super.onDestroy(); }
     @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (focus) immersive(); }
@@ -159,6 +160,7 @@ public final class MainActivity extends Activity {
         p.setMargins(dp(3), dp(3), dp(3), dp(3)); parent.addView(b, p);
     }
     private void base() {
+        if (activeToast != null) { activeToast.cancel(); activeToast = null; }
         releaseStreams(); tileViews.clear();
         root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(BG);
         root.setPadding(dp(32), dp(20), dp(32), dp(20)); setContentView(root);
@@ -452,9 +454,9 @@ public final class MainActivity extends Activity {
             TextView title = text((i + 1) + ". " + c.name, 17, TEXT); title.setMaxLines(1); title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             line.addView(title, new LinearLayout.LayoutParams(0, dp(54), 1));
             Button up = button("↑", () -> { CameraRules.move(current.cameras, index, index - 1); persist(); renderManager(); focusManagerCamera(index - 1); });
-            up.setContentDescription("Move " + c.name + " up"); up.setEnabled(i > 0); addButton(line, up);
+            up.setContentDescription("Move " + c.name + " up"); up.setEnabled(i > 0); up.setAlpha(i > 0 ? 1f : .35f); addButton(line, up);
             Button down = button("↓", () -> { CameraRules.move(current.cameras, index, index + 1); persist(); renderManager(); focusManagerCamera(index + 1); });
-            down.setContentDescription("Move " + c.name + " down"); down.setEnabled(i < current.cameras.size() - 1); addButton(line, down);
+            down.setContentDescription("Move " + c.name + " down"); down.setEnabled(i < current.cameras.size() - 1); down.setAlpha(i < current.cameras.size() - 1 ? 1f : .35f); addButton(line, down);
             Button edit = button("Edit", () -> editCamera(c)); edit.setContentDescription("Edit " + c.name); addButton(line, edit);
             addButton(line, button("More", () -> cameraOptions(index)));
             list.addView(line); tileViews.add(edit);
@@ -699,5 +701,8 @@ public final class MainActivity extends Activity {
         throw new IllegalArgumentException();
     }
 
-    private void toast(String message) { Toast.makeText(this, message, Toast.LENGTH_LONG).show(); }
+    private void toast(String message) {
+        if (activeToast != null) activeToast.cancel();
+        activeToast = Toast.makeText(this, message, Toast.LENGTH_LONG); activeToast.show();
+    }
 }
