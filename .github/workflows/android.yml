@@ -32,6 +32,7 @@ jobs:
       - name: Check core behavior
         run: |
           bash scripts/check-core.sh
+          bash scripts/check-digest.sh
           bash scripts/check-updates.sh
       - name: Load retained release signing key
         env:
@@ -89,6 +90,8 @@ jobs:
           path: |
             app/build/reports/
             app/build/test-results/
+            rtsp-compat/build/reports/
+            rtsp-compat/build/test-results/
           if-no-files-found: ignore
 
   ui-smoke:
@@ -112,8 +115,8 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
-          target: google_apis
+          api-level: 28
+          target: default
           arch: x86_64
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true

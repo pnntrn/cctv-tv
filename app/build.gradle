@@ -7,8 +7,8 @@ android {
         applicationId 'com.pnntrn.cctv'
         minSdk 26
         targetSdk 35
-        versionCode 1000 + (System.getenv('GITHUB_RUN_NUMBER') ?: '2').toInteger()
-        versionName '0.3.0'
+        versionCode 1007
+        versionName '0.3.1'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     signingConfigs {
@@ -39,7 +39,7 @@ android {
 dependencies {
     // Deliberately pinned, small native playback stack; no WebView or bundled FFmpeg.
     implementation 'androidx.media3:media3-exoplayer:1.8.0'
-    implementation 'androidx.media3:media3-exoplayer-rtsp:1.8.0'
+    implementation project(':rtsp-compat')
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20240303'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'

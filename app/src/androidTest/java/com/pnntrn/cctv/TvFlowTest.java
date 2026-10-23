@@ -46,6 +46,7 @@ public class TvFlowTest {
             d.findObject(By.text("Recorders")).click();
             d.wait(Until.findObject(By.text("Shop recorder")),5000).click();
             assertTrue(d.wait(Until.hasObject(By.text("Recorder name")),5000));shot(d,"recorder");d.pressBack();
+            d.wait(Until.findObject(By.text(java.util.regex.Pattern.compile("(?i)Discard"))),5000).click();
             d.findObject(By.text("Set up from phone")).click();
             // Standard emulator LAN may not expose a private IPv4. Both the pairing dialog and
             // explicit network-unavailable feedback are valid; the HTTP protocol is unit-tested.

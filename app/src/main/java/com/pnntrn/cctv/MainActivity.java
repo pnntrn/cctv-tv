@@ -13,6 +13,9 @@ import org.json.JSONArray;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import android.text.InputType;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.content.SharedPreferences;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -52,6 +55,75 @@ public final class MainActivity extends Activity {
     private TextView fullHelp;
     private Toast activeToast;
     private AppUpdater updater;
+    private AlertDialog recorderEditor, connectionPreview, draftExitDialog;
+    private RecorderDraft recorderDraft;
+    private EditText[] recorderFields;
+    private TextView recorderSecretHint;
+    private String pendingRecorderDraft;
+    private int previewGeneration;
+    private boolean previewVerified;
+
+    private SharedPreferences draftPreferences() { return getSharedPreferences("recorder-drafts", MODE_PRIVATE); }
+    private void captureRecorderDraft() {
+        if (recorderDraft == null || recorderFields == null) return;
+        recorderDraft.name = recorderFields[0].getText().toString();
+        recorderDraft.host = recorderFields[1].getText().toString();
+        recorderDraft.port = recorderFields[2].getText().toString();
+        recorderDraft.username = recorderFields[3].getText().toString();
+        recorderDraft.first = recorderFields[5].getText().toString();
+        recorderDraft.count = recorderFields[6].getText().toString();
+        recorderDraft.prefix = recorderFields[7].getText().toString();
+        try { draftPreferences().edit().putString(recorderDraft.key(), recorderDraft.encode())
+                .putString("active", recorderDraft.key()).apply(); } catch (org.json.JSONException ignored) { }
+    }
+    private void closeConnectionPreview() {
+        previewGeneration++; previewVerified = false;
+        if (connectionPreview != null) {
+            AlertDialog d = connectionPreview; connectionPreview = null;
+            d.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false); d.dismiss();
+        }
+    }
+    private void protectRecorderOnBackground() {
+        captureRecorderDraft(); closeConnectionPreview();
+        if (recorderFields != null) {
+            recorderFields[4].setText("");
+            recorderSecretHint.setText("Password cleared for privacy. Re-enter before testing; for an existing recorder, blank keeps its saved password.");
+        }
+    }
+    private void restoreRecorderEditor() {
+        if (pendingRecorderDraft == null || recorderEditor != null) return;
+        String encoded = pendingRecorderDraft; pendingRecorderDraft = null;
+        try {
+            RecorderDraft d = RecorderDraft.decode(encoded);
+            for (Location l : locations) if (l.id.equals(d.locationId)) {
+                Nvr existing = null;
+                for (Nvr n : l.devices) if (n.id.equals(d.recorderId)) existing = n;
+                if (!d.recorderId.isEmpty() && existing == null) return;
+                draftPreferences().edit().putString(d.key(), encoded).apply();
+                releaseStreams(); fullscreen = -1; current = l; managing = true; page = 0; render();
+                editNvr(existing, CameraRules.Preset.valueOf(d.preset)); return;
+            }
+        } catch (Exception ignored) { /* Malformed/stale drafts never affect saved profiles. */ }
+    }
+    private void finishRecorderEditor(boolean discard) {
+        if (recorderEditor == null) return;
+        captureRecorderDraft(); closeConnectionPreview();
+        SharedPreferences.Editor prefs = draftPreferences().edit().remove("active");
+        if (discard) prefs.remove(recorderDraft.key());
+        prefs.apply(); recorderFields[4].setText("");
+        AlertDialog d = recorderEditor; recorderEditor = null; recorderFields = null; recorderDraft = null;
+        d.dismiss(); if (started) render();
+    }
+    private void askLeaveRecorder() {
+        if (draftExitDialog != null) return;
+        captureRecorderDraft();
+        draftExitDialog = new AlertDialog.Builder(this).setTitle("Unsaved recorder changes")
+                .setMessage("Keep the nonsecret fields to continue later, or explicitly discard them. Passwords are never kept in a draft.")
+                .setNeutralButton("Continue editing", null)
+                .setNegativeButton("Discard", (d, w) -> finishRecorderEditor(true))
+                .setPositiveButton("Keep draft", (d, w) -> finishRecorderEditor(false)).create();
+        draftExitDialog.setOnDismissListener(d -> draftExitDialog = null); draftExitDialog.show();
+    }
     private void showUpdates() {
         try { if (updater == null) updater = new AppUpdater(this); updater.show(); }
         catch (Exception e) { toast("Cannot open updates; restart CCTV and retry"); }
@@ -107,12 +179,18 @@ public final class MainActivity extends Activity {
         if (state != null && state.containsKey("update.pending")) {
             try { updater = new AppUpdater(this); updater.restoreState(state); } catch (Exception ignored) { }
         }
+        String activeDraft = draftPreferences().getString("active", null);
+        pendingRecorderDraft = state != null ? state.getString("recorder.draft") : null;
+        if (pendingRecorderDraft == null && activeDraft != null)
+            pendingRecorderDraft = draftPreferences().getString(activeDraft, null);
         render();
     }
 
-    @Override protected void onStart() { super.onStart(); started = true; if (storageOkay) render(); }
+    @Override protected void onStart() { super.onStart(); started = true; if (storageOkay) { restoreRecorderEditor(); render(); } }
     @Override protected void onResume() { super.onResume(); if (updater != null) updater.resume(); }
+    @Override protected void onPause() { protectRecorderOnBackground(); super.onPause(); }
     @Override protected void onStop() {
+        protectRecorderOnBackground();
         if (updater != null) updater.stop();
         viewingSave.removeCallbacksAndMessages(null);
         if (storageOkay && current != null && !arranging) {
@@ -122,9 +200,19 @@ public final class MainActivity extends Activity {
         }
         started = false; if (activeToast != null) activeToast.cancel(); closePairing(); releaseStreams(); ui.removeCallbacksAndMessages(null); super.onStop();
     }
-    @Override protected void onDestroy() { if (updater != null) updater.close(); releaseStreams(); super.onDestroy(); }
+    @Override protected void onDestroy() {
+        closeConnectionPreview();
+        if (draftExitDialog != null) draftExitDialog.dismiss();
+        if (recorderEditor != null) { recorderFields[4].setText(""); recorderEditor.dismiss(); recorderEditor = null; }
+        if (updater != null) updater.close(); releaseStreams(); super.onDestroy(); }
     @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (focus) immersive(); }
     @Override protected void onSaveInstanceState(Bundle out) {
+        captureRecorderDraft();
+        if (recorderDraft != null) {
+            try { out.putString("recorder.draft", recorderDraft.encode()); } catch (org.json.JSONException ignored) { }
+            recorderFields[4].setText("");
+            recorderSecretHint.setText("Password cleared for recreation. Re-enter before testing; blank keeps the saved password for an existing recorder.");
+        }
         super.onSaveInstanceState(out);
         if (updater != null) updater.saveState(out);
         out.putString("location", current == null ? "" : current.id);
@@ -196,7 +284,7 @@ public final class MainActivity extends Activity {
     }
 
     private void render() {
-        if (!storageOkay) return;
+        if (!storageOkay || recorderEditor != null) return;
         if (managing && current != null) { renderManager(); return; }
         if (fullscreen >= 0 && current != null && fullscreen < current.cameras.size()) { renderFullscreen(); return; }
         fullscreen = -1; base();
@@ -218,6 +306,8 @@ public final class MainActivity extends Activity {
         }));
         root.addView(header);
         if (current != null) root.addView(text(arranging ? "Arrange cameras" : "LIVE VIEW   ·   " + current.cameras.size() + " cameras   ·   Substreams", 12, MINT));
+        if (current != null && (current.grid == 9 || current.grid == 16))
+            root.addView(text("Hardware decoder capacity varies; reduce tiles if pictures fail", 12, 0xFFA2B2C9));
         if (current == null || current.cameras.isEmpty()) {
             LinearLayout welcome = new LinearLayout(this); welcome.setOrientation(LinearLayout.VERTICAL); welcome.setGravity(Gravity.CENTER);
             welcome.addView(text(current == null ? "Your cameras. One remote." : "Add your first cameras", 30, TEXT));
@@ -341,6 +431,10 @@ public final class MainActivity extends Activity {
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        if (recorderEditor != null) {
+            if (event.getKeyCode() == KeyEvent.KEYCODE_MENU) return true;
+            return super.dispatchKeyEvent(event);
+        }
         if (event.getKeyCode() == KeyEvent.KEYCODE_MENU && event.getAction() == KeyEvent.ACTION_DOWN) {
             if (current != null && fullscreen < 0 && !arranging) { managing = !managing; render(); } return true;
         }
@@ -377,6 +471,8 @@ public final class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
+        if (connectionPreview != null) { closeConnectionPreview(); return; }
+        if (recorderEditor != null) { askLeaveRecorder(); return; }
         if (fullscreen >= 0) {
             focusedCamera = fullscreen; page = fullscreen / current.grid; fullscreen = -1; fullSub = false; render();
         } else if (arranging) {
@@ -421,6 +517,10 @@ public final class MainActivity extends Activity {
     private EditText field(LinearLayout form, String label, String value, int type) {
         form.addView(text(label, 13, 0xFFACBBD0));
         EditText e = new EditText(this); e.setText(value); e.setTextSize(16); e.setSingleLine(true); e.setInputType(type);
+        if ((type & InputType.TYPE_MASK_VARIATION) == InputType.TYPE_TEXT_VARIATION_PASSWORD) {
+            e.setSaveEnabled(false); e.setSaveFromParentEnabled(false);
+            e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+        }
         e.setContentDescription(label); e.setSelectAllOnFocus(true); e.setMinimumHeight(dp(48));
         form.addView(e, new LinearLayout.LayoutParams(-1, -2)); return e;
     }
@@ -571,43 +671,101 @@ public final class MainActivity extends Activity {
         }).show();
     }
 
+    // Keep raw edits (including pasted nonnumeric text) while offering a numeric keyboard.
+    // Only Test & save validates and parses; draft capture/restoration never normalizes text.
+    private EditText recorderNumberField(LinearLayout form, String label, String raw) {
+        EditText field = field(form, label, raw, InputType.TYPE_CLASS_TEXT);
+        field.setRawInputType(InputType.TYPE_CLASS_NUMBER);
+        return field;
+    }
+
     private void editNvr(Nvr existing, CameraRules.Preset preset) {
+        if (recorderEditor != null || current == null) return;
         Nvr initial = existing == null ? new Nvr() : existing;
         if (existing == null) { initial.preset = preset; initial.name = preset.name().replace('_', ' '); }
+        RecorderDraft draft = new RecorderDraft();
+        draft.locationId = current.id; draft.recorderId = existing == null ? "" : existing.id;
+        draft.preset = preset.name(); draft.name = initial.name; draft.host = initial.host;
+        draft.port = "" + initial.port; draft.username = initial.username; draft.first = "" + initial.first;
+        draft.count = "" + initial.count; draft.prefix = initial.prefix;
+        String saved = draftPreferences().getString(draft.key(), null);
+        if (saved != null) try { draft = RecorderDraft.decode(saved); } catch (org.json.JSONException ignored) { }
+        recorderDraft = draft;
         LinearLayout f = form();
-        EditText name = field(f, "Recorder name", initial.name, InputType.TYPE_CLASS_TEXT);
-        EditText host = field(f, "IP address or hostname", initial.host, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        EditText port = field(f, "RTSP port", "" + initial.port, InputType.TYPE_CLASS_NUMBER);
-        EditText user = field(f, "Username", initial.username, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        EditText pass = field(f, "Password", initial.password, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        EditText first = field(f, "First channel", "" + initial.first, InputType.TYPE_CLASS_NUMBER);
-        EditText count = field(f, "Channel count", "" + (preset == CameraRules.Preset.VIGI_CAMERA ? 1 : initial.count), InputType.TYPE_CLASS_NUMBER);
-        EditText prefix = field(f, "New camera name prefix", initial.prefix, InputType.TYPE_CLASS_TEXT);
+        f.addView(text("↑ / ↓ scrolls through fields • Back: Keep draft / Discard • Password must be re-entered after leaving the app.", 13, MINT));
+        EditText name = field(f, "Recorder name", draft.name, InputType.TYPE_CLASS_TEXT);
+        EditText host = field(f, "IP address or hostname", draft.host, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        EditText port = recorderNumberField(f, "RTSP port", draft.port);
+        EditText user = field(f, "Username", draft.username, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        EditText pass = field(f, "Password", "", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        recorderSecretHint = text(existing == null ? "Enter password before testing. Passwords are never kept in drafts."
+                : "Blank password keeps the existing saved credential. Enter a password to replace it.", 13, MINT);
+        f.addView(recorderSecretHint);
+        EditText first = recorderNumberField(f, "First channel", draft.first);
+        EditText count = recorderNumberField(f, "Channel count", draft.count);
+        EditText prefix = field(f, "New camera name prefix", draft.prefix, InputType.TYPE_CLASS_TEXT);
         if (preset == CameraRules.Preset.VIGI_CAMERA) { count.setText("1"); count.setEnabled(false); first.setText("1"); first.setEnabled(false); }
-        f.addView(text(existing == null ? "Check the first substream before adding channels." : "Updates linked cameras together. Existing names and order stay. Changing the channel range removes channels outside it.", 13, MINT));
+        recorderFields = new EditText[]{name, host, port, user, pass, first, count, prefix};
+        f.addView(text("↑ / ↓ moves between fields and scrolls. Test & save is below. Back offers Keep draft or Discard. Preview Back returns here.", 13, MINT));
         AlertDialog editor = new AlertDialog.Builder(this).setTitle(existing == null ? "Add recorder" : "Edit " + existing.name)
                 .setView(scroll(f)).setNegativeButton("Cancel", null).setPositiveButton("Test & save", null).create();
-        editor.setOnShowListener(ignored -> editor.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            try {
-                Nvr candidate = new Nvr(); candidate.id = initial.id; candidate.preset = preset;
-                candidate.name = value(name); candidate.host = value(host); candidate.port = number(port, "Port", 1, 65535);
-                candidate.username = user.getText().toString(); candidate.password = pass.getText().toString();
-                candidate.first = number(first, "First channel", 1, 256); candidate.count = number(count, "Channel count", 1, 256);
-                candidate.prefix = value(prefix).isEmpty() ? "Camera" : value(prefix); candidate.validate();
-                showConnectionTest(new Camera(candidate.prefix + " " + candidate.first, candidate.url(candidate.first, false), candidate.url(candidate.first, true)), () -> {
-                    try {
-                        candidate.apply(current);
-                        if (persist()) { editor.dismiss(); managing = true; render(); }
-                    } catch (IllegalArgumentException e) { toast(e.getMessage()); }
+        recorderEditor = editor; editor.setCancelable(false); editor.setCanceledOnTouchOutside(false);
+        editor.setOnCancelListener(d -> askLeaveRecorder());
+        editor.setOnKeyListener((d, code, event) -> {
+            if (code == KeyEvent.KEYCODE_MENU) return true;
+            if (code == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP) { askLeaveRecorder(); return true; }
+            return code == KeyEvent.KEYCODE_BACK;
+        });
+        editor.setOnShowListener(ignored -> {
+            editor.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v -> askLeaveRecorder());
+            Button testButton = editor.getButton(AlertDialog.BUTTON_POSITIVE);
+            for (int i = 0; i < recorderFields.length; i++) {
+                final int index = i; EditText field = recorderFields[i]; field.setId(View.generateViewId());
+                field.setOnKeyListener((v, code, event) -> {
+                    if (event.getAction() != KeyEvent.ACTION_DOWN || (code != KeyEvent.KEYCODE_DPAD_UP && code != KeyEvent.KEYCODE_DPAD_DOWN)) return false;
+                    int target = index + (code == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1);
+                    while (target >= 0 && target < recorderFields.length && !recorderFields[target].isEnabled()) target += code == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1;
+                    if (target >= recorderFields.length) testButton.requestFocus();
+                    else if (target >= 0) recorderFields[target].requestFocus();
+                    return true;
                 });
-            } catch (IllegalArgumentException e) { toast(e.getMessage()); }
-        }));
-        editor.setOnDismissListener(d -> { if (started) render(); }); editor.show();
-        editor.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+            }
+            testButton.setNextFocusUpId(prefix.getId());
+            testButton.setOnClickListener(v -> {
+                try {
+                    captureRecorderDraft();
+                    Nvr candidate = new Nvr(); candidate.id = initial.id; candidate.preset = preset;
+                    candidate.name = value(name); candidate.host = value(host); candidate.port = number(port, "Port", 1, 65535);
+                    candidate.username = user.getText().toString();
+                    candidate.password = pass.getText().toString();
+                    if (candidate.password.isEmpty() && existing != null) candidate.password = initial.password;
+                    candidate.first = number(first, "First channel", 1, 256); candidate.count = number(count, "Channel count", 1, 256);
+                    candidate.prefix = value(prefix).isEmpty() ? "Camera" : value(prefix); candidate.validate();
+                    showConnectionTest(new Camera(candidate.prefix + " " + candidate.first, candidate.url(candidate.first, false), candidate.url(candidate.first, true)), () -> {
+                        try {
+                            candidate.apply(current);
+                            if (persist()) { managing = true; finishRecorderEditor(true); }
+                        } catch (IllegalArgumentException e) { toast(e.getMessage()); }
+                    });
+                } catch (IllegalArgumentException e) { toast(e.getMessage()); }
+            });
+        });
+        for (EditText field : recorderFields) if (field != pass) field.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            public void onTextChanged(CharSequence s, int start, int before, int count) { captureRecorderDraft(); }
+            public void afterTextChanged(Editable e) { }
+        });
+        editor.show(); captureRecorderDraft();
+        editor.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+    }
+
+    private void previewOnUi(Runnable action) {
+        if (Looper.myLooper() == Looper.getMainLooper()) action.run(); else ui.post(action);
     }
 
     private void showConnectionTest(Camera camera, Runnable onVerified) {
-        releaseStreams();
+        closeConnectionPreview(); releaseStreams();
+        final int generation = ++previewGeneration; previewVerified = false;
         LinearLayout content = form();
         TextView outcome = text("Checking substream…", 15, MINT); content.addView(outcome);
         StreamTile preview = new StreamTile(this, camera, false, current.tcp);
@@ -616,19 +774,38 @@ public final class MainActivity extends Activity {
         AlertDialog test = new AlertDialog.Builder(this).setTitle("Connection preview")
                 .setView(content).setNegativeButton("Back", null)
                 .setPositiveButton(onVerified == null ? "Done" : "Save channels", null).create();
+        connectionPreview = test;
+        final boolean[] failed = {false};
         preview.setListener(new StreamTile.Listener() {
             @Override public void onFirstFrame() {
-                outcome.setText("Picture verified • substream is playing");
-                if (test.isShowing()) test.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+                previewOnUi(() -> {
+                    if (!started || failed[0] || generation != previewGeneration || connectionPreview != test || !test.isShowing()) return;
+                    previewVerified = true; outcome.setText("Picture verified • substream is playing");
+                    test.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+                });
             }
-            @Override public void onFailure(PlaybackFailure reason) { outcome.setText(reason.message); }
+            @Override public void onFailure(PlaybackFailure reason) {
+                previewOnUi(() -> {
+                    if (generation != previewGeneration || connectionPreview != test || !test.isShowing()) return;
+                    failed[0] = true; previewVerified = false; outcome.setText(reason.message);
+                    test.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(onVerified == null);
+                });
+            }
         });
         test.setOnShowListener(d -> {
             test.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(onVerified == null);
-            test.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> { test.dismiss(); if (onVerified != null) onVerified.run(); });
+            test.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                if (onVerified != null && (!started || !previewVerified || generation != previewGeneration)) return;
+                test.dismiss(); if (onVerified != null) onVerified.run();
+            });
             preview.start(0);
         });
-        test.setOnDismissListener(d -> { preview.release(); streams.remove(preview); }); test.show();
+        test.setOnDismissListener(d -> {
+            preview.release(); streams.remove(preview);
+            if (connectionPreview == test) { connectionPreview = null; previewVerified = false; previewGeneration++; }
+        });
+        test.setOnKeyListener((d, code, event) -> code == KeyEvent.KEYCODE_MENU);
+        test.show();
     }
 
     private void startPhoneSetup() {

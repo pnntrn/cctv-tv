@@ -1,0 +1,16 @@
+plugins { id 'com.android.library' }
+android {
+    namespace 'androidx.media3.exoplayer.rtsp'
+    compileSdk 35
+    defaultConfig { minSdk 26 }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    testOptions { unitTests.includeAndroidResources = true }
+}
+dependencies {
+    api 'androidx.media3:media3-exoplayer:1.8.0'
+    implementation 'androidx.annotation:annotation:1.6.0'
+    compileOnly 'org.checkerframework:checker-qual:3.33.0'
+    compileOnly 'com.google.errorprone:error_prone_annotations:2.28.0'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+}
