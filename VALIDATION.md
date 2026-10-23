@@ -8,6 +8,7 @@
 - Independent code review found activity-recreation recovery, shared download-file races, cancellation publication, and JSON recursion concerns. Fixed by saving pending release state and re-verifying on return, serializing transfers with unique temporary files, synchronized cancellation/connection publication, and a JSON depth guard. Android lifecycle/installer behavior still needs device validation.
 - Signed optimized APK: 430,842 bytes; package `com.pnntrn.cctv`, version 0.3.0, code 1006, minimum API 26.
 - APK v2 signature verified. One RSA-3072 signer matches the retained 0.2 release identity: `4bb96b0ff9021cc49885f9cdd02d62ec3e58c3704cd65853e8dc2269316c5f9b`.
+- The live public HTTPS manifest and APK were downloaded successfully; size, SHA-256 and byte-for-byte comparison matched the local verified APK.
 - APK SHA-256: `a43862eee23d484b36ffe4158f9aa561dd32eaa2dded212032777ff1ec591bb0`.
 
 ## GitHub and distribution
@@ -20,6 +21,6 @@ The separate public repository `pnntrn/cctv-updates` contains only APKs and upda
 
 ## Remaining validation
 
-- The updated native emulator smoke test was attempted locally without hardware acceleration and has not completed. Do not claim the new updater UI or Android installer flow passed an emulator/device test.
+- The updated native emulator test could not run successfully in the local software emulator: Android reported `Cannot connect to activity manager` after APK installation. The application UI assertions did not execute. Do not claim the updater UI or Android installer flow passed an emulator/device test.
 - The prior 0.2 native flow passed [workflow 39948381626](https://github.com/pnntrn/cctv-apk/actions/runs/39948381626). Existing screenshots use loopback/offline fixtures, not real camera footage.
 - Check update download, source permission, installation confirmation and saved-profile preservation on a real TV stick. Real Hikvision/VIGI playback, phone LAN access, decoder limits and power-cycle behavior also require physical hardware/network testing.
