@@ -5,6 +5,7 @@ Release candidates remain subject to the physical-device checks listed below. So
 ## 0.4.1 — release candidate
 
 - Restore the remembered camera on its current page after reordering, including when switching locations. Fall back to a valid saved page when the remembered camera no longer exists.
+- Correct Android 9 screenshot export and require the complete native UI capture set in CI.
 - Add repository contribution, security and release guidance, issue forms and third-party notices.
 - Pin the Gradle wrapper and verify signed release assets before tag publication, after build and native TV checks pass.
 - Keep the CCTV app name, package `com.pnntrn.cctv`, retained signing identity, saved profile format and legacy updater feed. Version code: 1009.

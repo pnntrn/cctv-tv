@@ -23,7 +23,7 @@ for test_class in InBandPlaybackTest RecorderDraftFlowTest TvFlowTest ViewingFlo
   adb logcat -d -v brief -s ExoPlayerImplInternal MediaCodecVideoRenderer ACodec OMXClient MediaCodec SoftAVC SoftAVCDec OMXNodeInstance > "ui-results/$test_class-codec.txt"
   # Save each class's captures before the next clean-install fixture reset removes them.
   for name in grid fullscreen settings recorder updates idle viewing-menu technician-entry technician-empty; do
-    if adb shell run-as com.pnntrn.cctv test -f "files/ui-$name.png"; then
+    if adb shell run-as com.pnntrn.cctv ls "files/ui-$name.png" >/dev/null 2>&1; then
       adb exec-out run-as com.pnntrn.cctv cat "files/ui-$name.png" > "ui-results/$name.png"
     fi
   done
@@ -38,6 +38,8 @@ for p in Path('ui-results').glob('*.png'):
         p.unlink()
     else:
         assert struct.unpack('>II',data[16:24]) == (1920,1080), 'Native UI screenshots must use physical TV geometry'
+required={'grid','fullscreen','settings','recorder','updates','idle','viewing-menu','technician-entry','technician-empty'}
+assert required <= {p.stem for p in Path('ui-results').glob('*.png')}, 'Required native screenshots are missing'
 output=Path('ui-results/instrumentation.txt').read_text()
 assert not re.search(r'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed', output), 'Android instrumentation failed or crashed'
 assert len(re.findall(r'OK \([0-9]+ tests?\)',output)) == 4, 'Android instrumentation assertions failed'

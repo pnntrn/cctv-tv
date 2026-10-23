@@ -23,3 +23,11 @@ The tag workflow requires build and native TV jobs, then verifies the signed APK
 ## Required physical-device checks
 
 Actual authenticated Hikvision/Mi Box playback, the owner's 11-channel installation, hardware decoder capacity and encrypted profile preservation after a signed in-place update remain unverified. The APK is a release candidate until those owner-device checks pass. No owner TV was reset or uninstalled.
+
+## Published candidate and CI evidence
+
+- [PR source CI](https://github.com/pnntrn/cctv-tv/actions/runs/40022402951) and [signed tag build, native tests and publication](https://github.com/pnntrn/cctv-tv/actions/runs/40023310371) passed for application source `9e373dcefab18da8bad1e5e3790af6d59abd3020`.
+- [v0.4.1-rc.1](https://github.com/pnntrn/cctv-tv/releases/tag/v0.4.1-rc.1) is public and marked prerelease. Anonymous APK/checksum downloads and tag source were verified. Public bytes match the independently verified signed build: 531535 bytes, SHA-256 `79a130d73135ea2613eaaec931d1c11292f51f0dcfccd051d4bd2486af356017`. Main README links the candidate.
+- The optimized signed APK installed and launched on the isolated API 28 emulator. This is not an owner-device in-place upgrade/profile-retention claim.
+- A post-publication harness correction replaces Android 9's inaccessible external `test` executable with `run-as ... ls` for capture existence checks. CI now requires all nine valid 1920×1080 screenshots. The original empty capture artifact is rejected; the corrected harness passed all 12 native methods locally and exported all nine screenshots. This followup changes no app or APK sources.
+- The verifier also rejected the actual development-signed APK for its wrong certificate.
