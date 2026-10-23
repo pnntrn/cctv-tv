@@ -12,7 +12,7 @@ for test_class in InBandPlaybackTest RecorderDraftFlowTest TvFlowTest; do
   adb shell pm clear com.pnntrn.cctv >/dev/null
   adb logcat -c
   adb shell am instrument -w -e class "com.pnntrn.cctv.$test_class" com.pnntrn.cctv.test/androidx.test.runner.AndroidJUnitRunner | tee -a ui-results/instrumentation.txt
-  adb logcat -d -v brief -s ExoPlayerImplInternal MediaCodecVideoRenderer ACodec OMXClient > "ui-results/$test_class-codec.txt"
+  adb logcat -d -v brief -s ExoPlayerImplInternal MediaCodecVideoRenderer ACodec OMXClient MediaCodec SoftAVC SoftAVCDec OMXNodeInstance > "ui-results/$test_class-codec.txt"
 done
 for name in grid fullscreen settings recorder updates; do
   adb exec-out run-as com.pnntrn.cctv cat "files/ui-$name.png" > "ui-results/$name.png" || rm -f "ui-results/$name.png"

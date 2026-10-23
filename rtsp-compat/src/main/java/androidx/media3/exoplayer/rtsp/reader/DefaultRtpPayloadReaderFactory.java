@@ -52,7 +52,7 @@ public final class DefaultRtpPayloadReaderFactory implements RtpPayloadReader.Fa
         return new RtpH263Reader(payloadFormat);
       case MimeTypes.VIDEO_H264:
         return payloadFormat.format.initializationData.isEmpty()
-            ? new InBandH264Reader() : new RtpH264Reader(payloadFormat);
+            ? new InBandH264Reader(payloadFormat) : new RtpH264Reader(payloadFormat);
       case MimeTypes.VIDEO_H265:
         return new RtpH265Reader(payloadFormat);
       case MimeTypes.VIDEO_MP4V:

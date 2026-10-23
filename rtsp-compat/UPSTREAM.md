@@ -4,3 +4,5 @@ Apache-2.0; individual upstream file notices retained.
 CCTV modifications: video-only SDP track selection; allow absent H264 parameter sets; bounded RFC6184 depacketization into the existing Media3 H264 elementary-stream reader for actual in-band SPS/PPS initialization. No native fallback dependency. H265 without SDP configuration remains unsupported and is reported without retry.
 
 The MediaPeriod starts the real RTSP session before preparation only when H264 requires in-band configuration; SETUP is issued once per transport. Internal classes opt in to the Media3 UnstableApi contract. No upstream dependency versions are upgraded.
+
+The elementary-stream reader is a format-discovery probe only; its samples are discarded. A bounded 4 MiB startup cache is replayed through upstream RtpH264Reader after real SPS/PPS are found, preserving RTP marker access-unit boundaries. The existing out-of-band configuration path is unchanged.

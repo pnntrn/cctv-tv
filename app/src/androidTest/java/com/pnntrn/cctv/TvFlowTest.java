@@ -24,10 +24,14 @@ public class TvFlowTest {
     @Test public void remoteNavigationRecorderPairingAndOrderPersistence() throws Exception {
         var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
         ProfileStore store=new ProfileStore(context);
+        assertTrue("Fixtures require an emulator",android.os.Build.FINGERPRINT.contains("generic")
+            || android.os.Build.HARDWARE.contains("ranchu") || android.os.Build.HARDWARE.contains("goldfish"));
+        assertTrue("Refusing to overwrite saved locations",store.load().isEmpty());
+        assertTrue("Refusing to overwrite saved drafts",context.getSharedPreferences("recorder-drafts",0).getAll().isEmpty());
         Location shop=new Location("Shop");Nvr recorder=new Nvr();recorder.name="Shop recorder";
         // Fixture uses loopback only. Screenshots never contain real credentials or camera feeds.
         recorder.host="127.0.0.1";recorder.port=9;recorder.count=16;recorder.password="demo";recorder.apply(shop);
-        String firstId=shop.cameras.get(0).id;
+        String[] movedId={shop.cameras.get(0).id}; int[] movedTo={1};
         ArrayList<Location> data=new ArrayList<>();data.add(shop);store.save(data);
         UiDevice d=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
@@ -54,14 +58,26 @@ public class TvFlowTest {
             if(close != null) { d.pressBack(); }
             assertTrue(d.wait(Until.hasObject(By.text("Recorders")),5000));
             d.findObject(By.text("‹ Live")).click();
-            d.findObject(By.text("Arrange")).click();d.pressDPadCenter();d.pressDPadRight();d.pressDPadCenter();
+            d.findObject(By.text("Arrange")).click();
+            assertTrue(d.wait(Until.hasObject(By.text("Save order")),5000));
+            var focused=d.findObject(By.descStartsWith("Camera ").focused(true));
+            if(focused==null){d.pressDPadDown();focused=d.wait(Until.findObject(By.descStartsWith("Camera ").focused(true)),5000);}
+            assertNotNull("Remote focus must reach a camera",focused);
+            String description=focused.getContentDescription();
+            int from=Integer.parseInt(description.substring(7,description.indexOf(',')))-1;
+            movedId[0]=store.load().get(0).cameras.get(from).id;
+            movedTo[0]=from+(from%2==0?1:-1);
+            d.pressDPadCenter();
+            if(from%2==0)d.pressDPadRight();else d.pressDPadLeft();
+            assertTrue(d.wait(Until.hasObject(By.desc(description).focused(true)),5000));
+            d.pressDPadCenter();
             d.findObject(By.text("Save order")).click();
             assertTrue(d.wait(Until.hasObject(By.textContains("Substreams")),5000));
-            assertEquals(firstId,store.load().get(0).cameras.get(1).id);
+            assertEquals(movedId[0],store.load().get(0).cameras.get(movedTo[0]).id);
         }
         try(ActivityScenario<MainActivity> again=ActivityScenario.launch(MainActivity.class)){
             assertTrue(d.wait(Until.hasObject(By.textContains("Substreams")),5000));
-            assertEquals(firstId,store.load().get(0).cameras.get(1).id);
+            assertEquals(movedId[0],store.load().get(0).cameras.get(movedTo[0]).id);
         }
     }
 }

@@ -26,11 +26,13 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import static org.junit.Assert.*;
 
-/** Native SurfaceView/MediaCodec regression: SDP contains neither fmtp nor out-of-band SPS/PPS. */
+/** Native decoder control and missing-fmtp regression, using the same synthetic H264 bytes. */
 @UnstableApi
 @RunWith(AndroidJUnit4.class)
 public final class InBandPlaybackTest {
-    @Test public void missingFmtpDecodesFirstFrameFromInterleavedInBandH264() throws Exception {
+    @Test public void outOfBandControlDecodesTheSameSyntheticVideo() throws Exception { play(true); }
+    @Test public void missingFmtpDecodesFirstFrameFromInterleavedInBandH264() throws Exception { play(false); }
+    private void play(boolean withFmtp) throws Exception {
         // Fail before launching: MainActivity automatically starts saved cameras. Use a clean
         // instrumentation install; never overwrite profiles or contact a configured camera.
         assertTrue("Run on a clean test install with no saved locations",
@@ -49,7 +51,7 @@ public final class InBandPlaybackTest {
         AtomicReference<PlaybackFailure> failure = new AtomicReference<>();
         AtomicReference<String> diagnostics = new AtomicReference<>("no failure callback");
         AtomicReference<StreamTile> tile = new AtomicReference<>();
-        try (LoopbackRtspServer server = new LoopbackRtspServer(fixture)) {
+        try (LoopbackRtspServer server = new LoopbackRtspServer(fixture, withFmtp)) {
             try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
                 scenario.onActivity(activity -> {
                     FrameLayout content = new FrameLayout(activity);
@@ -83,7 +85,7 @@ public final class InBandPlaybackTest {
                 // Only ExoPlayer's rendered-first-frame callback can satisfy this latch.
                 // OPTIONS, DESCRIBE, SETUP and PLAY responses alone must never pass the test.
                 boolean rendered = firstFrame.await(30, TimeUnit.SECONDS);
-                assertTrue("No decoded frame in 30s; playback=" + failure.get()
+                assertTrue("No decoded frame in 30s; fmtp="+withFmtp+"; playback=" + failure.get()
                         + "; server=" + server.failure.get()+"; setup="+server.setupRequests+"; play="+server.playRequests
                         +"; single="+server.singleNalPackets+"; fu="+server.fuPackets+"; "+diagnostics.get(), rendered);
                 assertNull("Playback failed before first frame", failure.get());
@@ -105,6 +107,7 @@ public final class InBandPlaybackTest {
         private final ServerSocket listener;
         private final Thread control;
         private final List<List<byte[]>> frames;
+        private final String fmtp;
         private final Object outputLock = new Object();
         final AtomicReference<Throwable> failure = new AtomicReference<>();
         private volatile Socket client;
@@ -118,8 +121,15 @@ public final class InBandPlaybackTest {
         private int sequence = 1000;
         private long timestamp = 90000;
 
-        LoopbackRtspServer(byte[] annexB) throws IOException {
+        LoopbackRtspServer(byte[] annexB, boolean withFmtp) throws IOException {
             frames = accessUnits(annexB);
+            String sps=null,pps=null;
+            for(byte[] nal:frames.get(0)){
+                if((nal[0]&31)==7)sps=android.util.Base64.encodeToString(nal,android.util.Base64.NO_WRAP);
+                if((nal[0]&31)==8)pps=android.util.Base64.encodeToString(nal,android.util.Base64.NO_WRAP);
+            }
+            if(sps==null || pps==null)throw new IOException("Synthetic fixture lacks parameter sets");
+            fmtp=withFmtp?"a=fmtp:96 packetization-mode=1;sprop-parameter-sets="+sps+","+pps+"\r\n":"";
             listener = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"));
             control = new Thread(this::serve, "inband-rtsp-control");
             control.start();
@@ -164,7 +174,7 @@ public final class InBandPlaybackTest {
                                     + "s=Synthetic in-band H264\r\nc=IN IP4 127.0.0.1\r\n"
                                     + "t=0 0\r\na=control:*\r\na=range:npt=0-\r\n"
                                     + "m=video 0 RTP/AVP 96\r\na=rtpmap:96 H264/90000\r\n"
-                                    + "a=control:trackID=1\r\n"; // Deliberately NO a=fmtp.
+                                    + "a=control:trackID=1\r\n" + fmtp; // Regression omits fmtp; control uses real fixture SPS/PPS.
                             respond(cseq, "Content-Type: application/sdp\r\nContent-Base: "
                                     + url() + "\r\n", sdp);
                             break;

@@ -1,22 +1,32 @@
 package androidx.media3.exoplayer.rtsp.reader;
+
+import androidx.media3.common.DataReader;
 import androidx.media3.common.Format;
 import androidx.media3.common.util.ParsableByteArray;
-import androidx.media3.common.DataReader;
-import androidx.media3.extractor.*;
+import androidx.media3.extractor.DummyTrackOutput;
+import androidx.media3.extractor.ExtractorOutput;
+import androidx.media3.extractor.SeekMap;
+import androidx.media3.extractor.TrackOutput;
 import java.io.IOException;
-/** Observes the parser's real format without exposing a provisional decoder configuration. */
+
+/** Captures real SPS/PPS format; the discovery parser never writes decoder samples. */
 @androidx.media3.common.util.UnstableApi
-final class InitializingOutput implements ExtractorOutput {
- final ExtractorOutput output; boolean initialized;
- InitializingOutput(ExtractorOutput output){this.output=output;}
- public TrackOutput track(int id,int type){
-  TrackOutput delegate=output.track(id,type);
-  return new TrackOutput(){
-   public void format(Format f){initialized=f.width>0&&f.height>0&&!f.initializationData.isEmpty();delegate.format(f);}
-   public int sampleData(DataReader in,int n,boolean allow,int part)throws IOException{return delegate.sampleData(in,n,allow,part);}
-   public void sampleData(ParsableByteArray in,int n,int part){delegate.sampleData(in,n,part);}
-   public void sampleMetadata(long t,int flags,int n,int offset,CryptoData crypto){delegate.sampleMetadata(t,flags,n,offset,crypto);}
-  };
- }
- public void endTracks(){output.endTracks();} public void seekMap(SeekMap map){output.seekMap(map);}
+final class InitializingOutput implements ExtractorOutput, TrackOutput {
+    Format format;
+    private final DummyTrackOutput sink = new DummyTrackOutput();
+    @Override public TrackOutput track(int id, int type) { return this; }
+    @Override public void endTracks() { }
+    @Override public void seekMap(SeekMap map) { }
+    @Override public void format(Format candidate) {
+        if (candidate.width > 0 && candidate.height > 0 && !candidate.initializationData.isEmpty()) {
+            format = candidate;
+        }
+    }
+    @Override public int sampleData(DataReader input, int length, boolean allowEnd, int part) throws IOException {
+        return sink.sampleData(input, length, allowEnd, part);
+    }
+    @Override public void sampleData(ParsableByteArray input, int length, int part) {
+        sink.sampleData(input, length, part);
+    }
+    @Override public void sampleMetadata(long time, int flags, int size, int offset, CryptoData crypto) { }
 }

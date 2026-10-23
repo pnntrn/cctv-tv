@@ -62,6 +62,19 @@ public class InBandSessionTest {
     if(result==androidx.media3.common.C.RESULT_FORMAT_READ)result=selected[0].readData(holder,buffer,0);
     assertEquals(androidx.media3.common.C.RESULT_BUFFER_READ,result);
     assertTrue("A complete key frame must be readable",buffer.isKeyFrame());assertTrue(buffer.data.position()>0);
+    java.nio.file.Path dump=java.nio.file.Path.of("build","session-sample-"+prefetch+".h264");
+    java.nio.file.Files.createDirectories(dump.getParent());
+    try(java.io.OutputStream out=java.nio.file.Files.newOutputStream(dump)){
+      for(byte[] init:f.initializationData)out.write(init);
+      out.write(buffer.data.array(),0,buffer.data.position());
+    }
+    byte[] accessUnit=java.util.Arrays.copyOf(buffer.data.array(),buffer.data.position());
+    int lastNal=-1;
+    for(int i=0;i<accessUnit.length-3;i++)if(accessUnit[i]==0 && accessUnit[i+1]==0
+      && (accessUnit[i+2]==1 || (accessUnit[i+2]==0 && accessUnit[i+3]==1))){
+        int prefix=accessUnit[i+2]==1?3:4;if(i+prefix<accessUnit.length)lastNal=accessUnit[i+prefix]&31;i+=prefix-1;
+    }
+    assertEquals("RTP marker must end the picture before the next SPS/PPS",5,lastNal);
     assertEquals(1,server.setupRequests);assertEquals(1,server.playRequests);assertNull(server.failure.get());
    }finally{period.release();Shadows.shadowOf(Looper.getMainLooper()).idle();}
   }
