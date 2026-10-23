@@ -2,6 +2,14 @@
 
 A lightweight native Android TV / Google TV RTSP viewer for Android 8.0+. Direct connections to Hikvision, VIGI and custom RTSP cameras. No cloud account, streaming server, WebView, analytics, or bundled FFmpeg.
 
+## Download
+
+[Download the signed 0.4.0 release candidate APK](https://github.com/pnntrn/cctv-apk/releases/download/v0.4.0-rc.1/cctv-release.apk) · [Release notes and checksums](https://github.com/pnntrn/cctv-apk/releases)
+
+Download `cctv-release.apk` on your Android TV or transfer it to the TV, then open it to install. Updates signed with the retained release key preserve saved profiles. Android 8.0 or later is required.
+
+Version 0.4.0 adds Thai controls, an edge-to-edge camera grid with controls hidden when idle, and separate technician setup. It also includes H.264 streams with missing SDP codec metadata and recorder draft recovery. Actual Hikvision playback and update/profile preservation on the owner's Mi Box still need device verification.
+
 ## Viewing
 
 - Multiple locations; 1, 4, 9 or 16 live substreams per page; up to 256 saved cameras per location.
@@ -102,4 +110,4 @@ Release signing is configured with the private `CCTV_SIGNING_BUNDLE` Actions sec
 python3 scripts/publish-update.py path/to/cctv-release.apk --notes "Changes in this release"
 ```
 
-This verifies the retained certificate and version, then publishes only the APK, public release notes and feed. Downloads are pinned to an immutable APK commit. Source and signing files stay private. Publishing needs write access to `pnntrn/cctv-updates`; it does not require embedding a GitHub token in the app or setting up a cross-repository CI token.
+This verifies the retained certificate and version, then publishes the APK, public release notes and feed to the legacy updater repository. Downloads are pinned to an immutable APK commit. Source is public in this repository; signing files remain private. Publishing to the legacy feed needs write access to `pnntrn/cctv-updates`; it does not require embedding a GitHub token in the app or setting up a cross-repository CI token. Direct APK downloads are also available from this repository's Releases page above.
