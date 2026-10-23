@@ -4,13 +4,13 @@ A lightweight native Android TV / Google TV RTSP viewer for Android 8.0+. Direct
 
 ## Download
 
-[Download the signed 0.4.1 release candidate APK](https://github.com/pnntrn/cctv-tv/releases/download/v0.4.1-rc.1/cctv-release.apk) · [Release notes and checksums](https://github.com/pnntrn/cctv-tv/releases)
+[Download the signed 0.4.2 release candidate APK](https://github.com/pnntrn/cctv-tv/releases/download/v0.4.2-rc.1/cctv-release.apk) · [Release notes and checksums](https://github.com/pnntrn/cctv-tv/releases)
 
 Download `cctv-release.apk` on your Android TV or transfer it to the TV, then open it to install. Updates signed with the retained release key preserve saved profiles. Android 8.0 or later is required.
 
-Version 0.4.1 corrects remembered-camera and grid-page restoration after reordering. It remains a release candidate for physical-device verification. Version 0.4.0 introduced Thai controls, an edge-to-edge camera grid with controls hidden when idle, and separate technician setup. It also includes H.264 streams with missing SDP codec metadata and recorder draft recovery. Actual Hikvision playback and update/profile preservation on the owner's Mi Box still need device verification.
+Version 0.4.2 adds Mi Box controls without a Menu button: hold OK for one second for viewing options, then hold Back for three seconds inside that menu for technician confirmation. Version 0.4.1 corrects remembered-camera and grid-page restoration after reordering. It remains a release candidate for physical-device verification. Version 0.4.0 introduced Thai controls, an edge-to-edge camera grid with controls hidden when idle, and separate technician setup. It also includes H.264 streams with missing SDP codec metadata and recorder draft recovery. Actual Hikvision playback and update/profile preservation on the owner's Mi Box still need device verification.
 
-[Source and updated usage documentation for this candidate](https://github.com/pnntrn/cctv-tv/tree/v0.4.1-rc.1#readme) · [Review PR #1](https://github.com/pnntrn/cctv-tv/pull/1) (unmerged).
+[Source and updated usage documentation for this candidate](https://github.com/pnntrn/cctv-tv/tree/v0.4.2-rc.1#readme) · [Review PR #1](https://github.com/pnntrn/cctv-tv/pull/1) (unmerged).
 
 ## Viewing
 
