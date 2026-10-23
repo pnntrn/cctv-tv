@@ -4,11 +4,13 @@ A lightweight native Android TV / Google TV RTSP viewer for Android 8.0+. Direct
 
 ## Download
 
-[Download the signed 0.4.0 release candidate APK](https://github.com/pnntrn/cctv-apk/releases/download/v0.4.0-rc.1/cctv-release.apk) · [Release notes and checksums](https://github.com/pnntrn/cctv-apk/releases)
+[Download the signed 0.4.1 release candidate APK](https://github.com/pnntrn/cctv-tv/releases/download/v0.4.1-rc.1/cctv-release.apk) · [Release notes and checksums](https://github.com/pnntrn/cctv-tv/releases)
 
 Download `cctv-release.apk` on your Android TV or transfer it to the TV, then open it to install. Updates signed with the retained release key preserve saved profiles. Android 8.0 or later is required.
 
-Version 0.4.0 adds Thai controls, an edge-to-edge camera grid with controls hidden when idle, and separate technician setup. It also includes H.264 streams with missing SDP codec metadata and recorder draft recovery. Actual Hikvision playback and update/profile preservation on the owner's Mi Box still need device verification.
+Version 0.4.1 corrects remembered-camera and grid-page restoration after reordering. It remains a release candidate for physical-device verification. Version 0.4.0 introduced Thai controls, an edge-to-edge camera grid with controls hidden when idle, and separate technician setup. It also includes H.264 streams with missing SDP codec metadata and recorder draft recovery. Actual Hikvision playback and update/profile preservation on the owner's Mi Box still need device verification.
+
+[Source and updated usage documentation for this candidate](https://github.com/pnntrn/cctv-tv/tree/v0.4.1-rc.1#readme) · [Review PR #1](https://github.com/pnntrn/cctv-tv/pull/1) (unmerged).
 
 ## Viewing
 
@@ -58,7 +60,7 @@ Authentication rejection, missing stream paths, network reachability, timeouts a
 
 ## APK builds and permanent signing
 
-[GitHub Actions](https://github.com/pnntrn/cctv-apk/actions) produces **cctv-tv-apks** with:
+[GitHub Actions](https://github.com/pnntrn/cctv-tv/actions) produces **cctv-tv-apks** with:
 
 - `cctv-tv-debug.apk`: installable development build.
 - `cctv-release.apk`: installable optimized release **when retained signing is configured**.
@@ -86,7 +88,7 @@ These are native emulator screenshots using deliberately offline fixture cameras
 - `bash scripts/check-core.sh` executes the production Java rules: original 48 checks plus recorder updates, legacy linking, pairing access and RTSP probe tests.
 - GitHub Actions runs unit tests, HTTP setup protocol tests, Android lint and debug/release compilation.
 - A landscape Android emulator smoke job checks navigation, fullscreen/back, settings, recorder editing, saved arrangement and reopen behavior. It publishes native screenshots under **native-ui-screenshots**. Fixture cameras use loopback URLs, with no real camera credentials or footage.
-- [Verified build and emulator run](https://github.com/pnntrn/cctv-apk/actions/runs/39948381626) passed for application commit `85cbc4a9987cefd1324e5c8f1cc38a85da0faa2e`.
+- [Verified build and emulator run](https://github.com/pnntrn/cctv-tv/actions/runs/39948381626) passed for application commit `85cbc4a9987cefd1324e5c8f1cc38a85da0faa2e`.
 - `bash scripts/check-digest.sh` additionally checks MD5 Digest authentication with and without qop, including reserved credential/path characters.
 - A physical TV stick and reachable NVR are still needed to verify real-camera compatibility, Wi-Fi behavior and decoder capacity.
 
