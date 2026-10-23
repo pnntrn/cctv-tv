@@ -2,6 +2,13 @@
 
 Release candidates remain subject to the physical-device checks listed below. Source history is available in [GitHub releases](https://github.com/pnntrn/cctv-tv/releases).
 
+## 0.4.2 — release candidate
+
+- Support Mi Box remotes without Menu: hold OK for one second for viewing options; inside that menu, hold Back for three seconds to request technician setup, then confirm.
+- Keep short OK/Back camera navigation and existing Menu shortcuts. Held-key releases cannot select a menu item or dismiss/accept technician confirmation.
+- Cancel pending holds when interrupted or backgrounded; setup still defaults to keep watching. Update Thai help for first setup and normal viewing.
+- Preserve the CCTV name, package, retained signing key and profiles. Version code: 1010. Physical Mi Box/Hikvision and upgrade/profile checks remain required.
+
 ## 0.4.1 — release candidate
 
 - Restore the remembered camera on its current page after reordering, including when switching locations. Fall back to a valid saved page when the remembered camera no longer exists.

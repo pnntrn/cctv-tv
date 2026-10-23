@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="tv_camera_action">, กด OK เพื่อดูเต็มจอ</string>
-    <string name="tv_grid_help">"  •  OK เต็มจอ  •  Menu เมนูดูภาพ"</string>
+    <string name="tv_grid_help">"  •  OK เต็มจอ  •  กด OK ค้าง 1 วินาที: เมนูดูภาพ"</string>
     <string name="tv_setup">ตั้งค่าสำหรับช่าง</string>
     <string name="tv_setup_suffix">" / ตั้งค่าสำหรับช่าง"</string>
     <string name="tv_transport">"การเชื่อมต่อ RTSP: "</string>
@@ -21,6 +21,7 @@
     <string name="tv_keep_watching">ดูต่อ</string>
     <string name="tv_enter_setup">เข้าสู่การตั้งค่า</string>
     <string name="tv_viewing_menu">เมนูดูภาพ</string>
+    <string name="tv_viewing_menu_setup_hint">กดย้อนกลับค้าง 3 วินาที: ตั้งค่าสำหรับช่าง</string>
     <string name="tv_camera_grid">ดูกล้องแบบตาราง</string>
     <string name="tv_grid_size">จำนวนกล้องในตาราง</string>
     <string name="tv_switch_location">เปลี่ยนสถานที่</string>
@@ -31,10 +32,10 @@
     <string name="tv_changes_were_not_saved">บันทึกไม่สำเร็จ</string>
     <string name="tv_could_not_write_the_encrypted_settings_check_available_storage_and_restart_the_app">บันทึกการตั้งค่าที่เข้ารหัสไม่ได้ กรุณาตรวจสอบพื้นที่ว่างแล้วเปิดแอปใหม่</string>
     <string name="tv_ok">ตกลง</string>
-    <string name="tv_no_cameras_yet_hold_menu_for_3_seconds_to_set_up">ยังไม่มีกล้อง กด Menu ค้าง 3 วินาทีเพื่อเริ่มตั้งค่า</string>
+    <string name="tv_no_cameras_yet_hold_menu_for_3_seconds_to_set_up">ยังไม่มีกล้อง\nกด OK ค้าง 1 วินาทีเพื่อเปิดเมนูดูภาพ\nจากนั้นกดย้อนกลับค้าง 3 วินาทีเพื่อตั้งค่าสำหรับช่าง</string>
     <string name="tv_drop_the_camera_with_ok_first">กด OK เพื่อวางกล้องก่อน</string>
     <string name="tv_mainstream_unavailable_switched_to_substream">เปิดภาพหลักไม่ได้ เปลี่ยนเป็นภาพรองแล้ว</string>
-    <string name="tv_camera_ok_sub_main_back_grid">← → เปลี่ยนกล้อง   •   OK ภาพรอง / ภาพหลัก   •   ย้อนกลับ ตารางกล้อง</string>
+    <string name="tv_camera_ok_sub_main_back_grid">← → เปลี่ยนกล้อง   •   OK ภาพรอง / ภาพหลัก   •   กด OK ค้าง 1 วินาที: เมนูดูภาพ   •   ย้อนกลับ ตารางกล้อง</string>
     <string name="tv_exit_cctv">ออกจาก CCTV หรือไม่?</string>
     <string name="tv_exit">ออก</string>
     <string name="tv_save_or_cancel_arrangement_first">บันทึกหรือยกเลิกการจัดกล้องก่อน</string>

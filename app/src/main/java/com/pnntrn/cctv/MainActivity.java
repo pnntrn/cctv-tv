@@ -49,7 +49,15 @@ public final class MainActivity extends Activity {
     private final TvViewingState remote = new TvViewingState();
     private AlertDialog viewingMenu, technicianConfirmation;
     private final Runnable menuHold = () -> {
-        if (started && remote.menuHeld(android.os.SystemClock.uptimeMillis())) confirmTechnician();
+        if (viewingInputFocused() && remote.menuHeld(android.os.SystemClock.uptimeMillis())) confirmTechnician();
+    };
+    private final Runnable okHold = () -> {
+        if (started && !managing && viewingMenu == null && technicianConfirmation == null && hasWindowFocus()
+                && remote.held(TvViewingState.Key.OK, android.os.SystemClock.uptimeMillis())) viewingMenu();
+    };
+    private final Runnable backHold = () -> {
+        if (viewingMenu != null && viewingInputFocused()
+                && remote.held(TvViewingState.Key.VIEWING_BACK, android.os.SystemClock.uptimeMillis())) confirmTechnician();
     };
     private ArrayList<Camera> originalOrder;
     private Button layoutButton, nextButton;
@@ -158,15 +166,25 @@ public final class MainActivity extends Activity {
         ui.removeCallbacks(hideChrome); setViewingChrome(true);
         if (!managing && !arranging) ui.postDelayed(hideChrome, 4000);
     }
+    private boolean viewingInputFocused() {
+        if (!started || managing || technicianConfirmation != null) return false;
+        return viewingMenu == null ? hasWindowFocus()
+                : viewingMenu.isShowing() && viewingMenu.getWindow().getDecorView().hasWindowFocus();
+    }
+    private void cancelRemoteHolds() {
+        ui.removeCallbacks(menuHold); ui.removeCallbacks(okHold); ui.removeCallbacks(backHold);
+        remote.cancelHolds();
+    }
     private void confirmTechnician() {
         if (technician || technicianConfirmation != null) return;
+        cancelRemoteHolds();
         if (viewingMenu != null) viewingMenu.dismiss();
         AlertDialog dialog = dialogBuilder().setTitle(getString(R.string.tv_technician_setup))
                 .setMessage(getString(R.string.tv_only_enter_to_change_camera_settings))
                 .setNegativeButton(getString(R.string.tv_keep_watching), null)
                 .setPositiveButton(getString(R.string.tv_enter_setup), (d, w) -> enterTechnician()).create();
         technicianConfirmation = dialog;
-        dialog.setOnDismissListener(d -> { technicianConfirmation = null; remote.cancelMenu(); });
+        dialog.setOnDismissListener(d -> { technicianConfirmation = null; cancelRemoteHolds(); });
         dialog.show();
         dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setFocusableInTouchMode(true);
         dialog.getButton(AlertDialog.BUTTON_NEGATIVE).requestFocus();
@@ -190,13 +208,20 @@ public final class MainActivity extends Activity {
         closePairing(); technician = false; managing = false; arranging = false; grabbed = -1;
     }
     private void viewingMenu() {
+        if (managing || viewingMenu != null || technicianConfirmation != null) return;
+        cancelRemoteHolds();
+        TextView hint = text(getString(R.string.tv_viewing_menu_setup_hint), 14, TEXT);
+        hint.setPadding(dp(24), dp(8), dp(24), dp(16));
         AlertDialog menu = dialogBuilder().setTitle(getString(R.string.tv_viewing_menu))
+                .setView(hint)
                 .setItems(new String[]{getString(R.string.tv_camera_grid), getString(R.string.tv_grid_size), getString(R.string.tv_switch_location)}, (d, which) -> {
                     if (which == 0 && fullscreen >= 0) { page = fullscreen / current.grid; fullscreen = -1; render(); }
                     if (which == 1) layoutPicker();
                     if (which == 2) locationPicker();
                 }).create();
-        viewingMenu = menu; menu.setOnDismissListener(d -> { viewingMenu = null; revealChrome(); }); menu.show();
+        viewingMenu = menu;
+        menu.setOnDismissListener(d -> { viewingMenu = null; cancelRemoteHolds(); revealChrome(); });
+        menu.show();
     }
     private void saveViewingSoon() {
         if (current == null || arranging || !storageOkay) return;
@@ -250,14 +275,15 @@ public final class MainActivity extends Activity {
     @Override protected void onStart() { super.onStart(); started = true; if (storageOkay) { render(); } }
     @Override protected void onResume() { super.onResume(); if (updater != null) updater.resume(); }
     @Override protected void onPause() {
+        cancelRemoteHolds();
         protectRecorderOnBackground(); endTechnician();
         for (AlertDialog dialog : new ArrayList<>(dialogs)) dialog.dismiss(); dialogs.clear();
-        remote.cancelMenu(); ui.removeCallbacks(menuHold);
         if (viewingMenu != null) viewingMenu.dismiss();
         if (technicianConfirmation != null) technicianConfirmation.dismiss();
         super.onPause();
     }
     @Override protected void onStop() {
+        cancelRemoteHolds();
         protectRecorderOnBackground();
         if (updater != null) updater.stop();
         viewingSave.removeCallbacksAndMessages(null);
@@ -269,11 +295,15 @@ public final class MainActivity extends Activity {
         started = false; if (activeToast != null) activeToast.cancel(); closePairing(); releaseStreams(); ui.removeCallbacksAndMessages(null); super.onStop();
     }
     @Override protected void onDestroy() {
+        cancelRemoteHolds();
         closeConnectionPreview();
         if (draftExitDialog != null) draftExitDialog.dismiss();
         if (recorderEditor != null) { recorderFields[4].setText(""); recorderEditor.dismiss(); recorderEditor = null; }
         if (updater != null) updater.close(); releaseStreams(); super.onDestroy(); }
-    @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (focus) immersive(); }
+    @Override public void onWindowFocusChanged(boolean focus) {
+        super.onWindowFocusChanged(focus);
+        if (focus) immersive(); else cancelRemoteHolds();
+    }
     @Override protected void onSaveInstanceState(Bundle out) {
         captureRecorderDraft();
         if (recorderDraft != null) {
@@ -441,28 +471,81 @@ public final class MainActivity extends Activity {
         fullSub = !fullSub; render();
     }
 
+    private static TvViewingState.KeyPhase keyPhase(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_UP) return TvViewingState.KeyPhase.UP;
+        return event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0
+                ? TvViewingState.KeyPhase.DOWN : TvViewingState.KeyPhase.REPEAT;
+    }
+    private boolean dispatchMenuKey(KeyEvent event) {
+        if (technician) return true;
+        long now = android.os.SystemClock.uptimeMillis();
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            if (event.getRepeatCount() == 0) { remote.menuDown(now); ui.postDelayed(menuHold, TvViewingState.MENU_HOLD_MS); }
+            else if (remote.menuHeld(now)) confirmTechnician();
+        } else if (event.getAction() == KeyEvent.ACTION_UP) {
+            ui.removeCallbacks(menuHold);
+            if (event.isCanceled()) remote.cancelMenu();
+            else if (remote.menuHeld(now)) confirmTechnician();
+            if (remote.menuUp(now)) viewingMenu();
+        }
+        return true;
+    }
+    private boolean dispatchViewingBack(KeyEvent event) {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            if (event.getRepeatCount() == 0) {
+                remote.down(TvViewingState.Key.VIEWING_BACK, now);
+                ui.postDelayed(backHold, TvViewingState.BACK_HOLD_MS);
+            } else if (remote.held(TvViewingState.Key.VIEWING_BACK, now)) confirmTechnician();
+        } else if (event.getAction() == KeyEvent.ACTION_UP) {
+            ui.removeCallbacks(backHold);
+            if (event.isCanceled()) remote.cancel(TvViewingState.Key.VIEWING_BACK);
+            else if (remote.held(TvViewingState.Key.VIEWING_BACK, now)) confirmTechnician();
+            if (remote.up(TvViewingState.Key.VIEWING_BACK, now) && viewingMenu != null) viewingMenu.dismiss();
+        }
+        return true;
+    }
+    private boolean dispatchViewingOk(KeyEvent event) {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            if (event.getRepeatCount() == 0) {
+                remote.down(TvViewingState.Key.OK, now);
+                ui.postDelayed(okHold, TvViewingState.OK_HOLD_MS);
+            } else if (remote.held(TvViewingState.Key.OK, now)) viewingMenu();
+        } else if (event.getAction() == KeyEvent.ACTION_UP) {
+            ui.removeCallbacks(okHold);
+            if (event.isCanceled()) remote.cancel(TvViewingState.Key.OK);
+            else if (remote.held(TvViewingState.Key.OK, now)) viewingMenu();
+            if (remote.up(TvViewingState.Key.OK, now)) {
+                if (fullscreen >= 0) toggleFullscreenStream();
+                else if (current != null && !current.cameras.isEmpty()) { fullscreen = focusedCamera; fullSub = false; render(); }
+            }
+        }
+        return true;
+    }
+    private boolean dispatchDialogKey(AlertDialog dialog, int key, KeyEvent event) {
+        if (dialog == viewingMenu) {
+            if (key == KeyEvent.KEYCODE_BACK) return dispatchViewingBack(event);
+            if (key == KeyEvent.KEYCODE_MENU) return dispatchMenuKey(event);
+        }
+        TvViewingState.Key pending = key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER
+                ? TvViewingState.Key.OK : key == KeyEvent.KEYCODE_BACK ? TvViewingState.Key.VIEWING_BACK
+                : key == KeyEvent.KEYCODE_MENU ? TvViewingState.Key.MENU : null;
+        if (pending != null && remote.suppressPending(pending, keyPhase(event))) return true;
+        return key == KeyEvent.KEYCODE_MENU;
+    }
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         if (recorderEditor != null) {
             if (event.getKeyCode() == KeyEvent.KEYCODE_MENU) return true;
             return super.dispatchKeyEvent(event);
         }
         int key = event.getKeyCode();
+        if (key == KeyEvent.KEYCODE_BACK && remote.suppressPending(TvViewingState.Key.VIEWING_BACK, keyPhase(event))) return true;
         if (!managing && (key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT
                 || key == KeyEvent.KEYCODE_DPAD_UP || key == KeyEvent.KEYCODE_DPAD_DOWN
                 || key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER || key == KeyEvent.KEYCODE_MENU)) revealChrome();
-        if (key == KeyEvent.KEYCODE_MENU) {
-            if (technician) return true;
-            long now = android.os.SystemClock.uptimeMillis();
-            if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                if (event.getRepeatCount() == 0) { remote.menuDown(now); ui.postDelayed(menuHold, TvViewingState.MENU_HOLD_MS); }
-                else if (remote.menuHeld(now)) confirmTechnician();
-            } else if (event.getAction() == KeyEvent.ACTION_UP) {
-                ui.removeCallbacks(menuHold);
-                if (!event.isCanceled() && remote.menuHeld(now)) confirmTechnician();
-                if (remote.menuUp(now) && !event.isCanceled()) viewingMenu();
-            }
-            return true;
-        }
+        if (key == KeyEvent.KEYCODE_MENU) return dispatchMenuKey(event);
+        if (!managing && (key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER)) return dispatchViewingOk(event);
         if (!managing && fullscreen < 0 && current != null && !current.cameras.isEmpty()) {
             int dx = key == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : key == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : 0;
             int dy = key == KeyEvent.KEYCODE_DPAD_UP ? -1 : key == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : 0;
@@ -475,22 +558,14 @@ public final class MainActivity extends Activity {
                 }
                 return true;
             }
-            if (key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER) {
-                if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) { fullscreen = focusedCamera; fullSub = false; render(); }
-                return true;
-            }
         }
         if (fullscreen >= 0 && !managing) {
             if (event.getAction() == KeyEvent.ACTION_DOWN) revealChrome();
             int code = event.getKeyCode();
-            if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT
-                    || code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER) {
+            if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
-                    if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER) toggleFullscreenStream();
-                    else {
-                        fullscreen = Math.floorMod(fullscreen + (code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1), current.cameras.size());
-                        focusedCamera = fullscreen; fullSub = false; render();
-                    }
+                    fullscreen = Math.floorMod(fullscreen + (code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1), current.cameras.size());
+                    focusedCamera = fullscreen; fullSub = false; render();
                 }
                 return true;
             }
@@ -650,6 +725,10 @@ public final class MainActivity extends Activity {
     private void trackDialog(AlertDialog dialog) {
         dialogs.removeIf(previous -> !previous.isShowing());
         dialogs.add(dialog);
+        dialog.setOnKeyListener((d, key, event) -> dispatchDialogKey(dialog, key, event));
+        dialog.getWindow().getDecorView().getViewTreeObserver().addOnWindowFocusChangeListener(focus -> {
+            if (!focus) cancelRemoteHolds();
+        });
     }
     private AlertDialog.Builder safeDeleteDialog(String title) {
         return new AlertDialog.Builder(this) {
