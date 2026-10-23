@@ -2,6 +2,14 @@
 
 A lightweight native Android TV / Google TV RTSP viewer for Android 8.0+. Direct connections to Hikvision, VIGI and custom RTSP cameras. No cloud account, streaming server, WebView, analytics, or bundled FFmpeg.
 
+## Download
+
+[Download the signed 0.3.1 release candidate APK](https://github.com/pnntrn/cctv-apk/releases/download/v0.3.1-rc.1/cctv-release.apk) · [Release notes and checksums](https://github.com/pnntrn/cctv-apk/releases)
+
+Download `cctv-release.apk` on your Android TV or transfer it to the TV, then open it to install. Updates signed with the retained release key preserve saved profiles. Android 8.0 or later is required.
+
+Version 0.3.1 adds H.264 streams with missing SDP codec metadata and recorder draft recovery. Android 9 synthetic playback and navigation tests cover these changes; actual Hikvision playback and update/profile preservation on the owner's Mi Box still need device verification.
+
 ## Viewing
 
 - Multiple locations; 1, 4, 9 or 16 live substreams per page; up to 256 saved cameras per location.
@@ -63,7 +71,7 @@ The retained key is already configured and privately backed up. Do not generate 
 
 The first 0.2.0 release was signed separately with the retained key and its APK v2/v3 signatures verified. Its certificate SHA-256 is `4bb96b0ff9021cc49885f9cdd02d62ec3e58c3704cd65853e8dc2269316c5f9b`. It is approximately 418 KiB. The retained signing identity is now configured in GitHub Actions.
 
-The old development build used an ephemeral debug key. Moving from that build to the retained release key may require a one-time uninstall, which removes local profiles. Subsequent releases signed with the retained key install as updates. Debug builds continue using development keys and are not the supported upgrade channel. CI version codes increase with workflow run number.
+The old development build used an ephemeral debug key. Moving from that build to the retained release key may require a one-time uninstall, which removes local profiles. Subsequent releases signed with the retained key install as updates. Debug builds continue using development keys and are not the supported upgrade channel. Release version codes are set explicitly in `app/build.gradle` and must increase for each update.
 
 ## Native UI preview
 
@@ -102,4 +110,4 @@ Release signing is configured with the private `CCTV_SIGNING_BUNDLE` Actions sec
 python3 scripts/publish-update.py path/to/cctv-release.apk --notes "Changes in this release"
 ```
 
-This verifies the retained certificate and version, then publishes only the APK, public release notes and feed. Downloads are pinned to an immutable APK commit. Source and signing files stay private. Publishing needs write access to `pnntrn/cctv-updates`; it does not require embedding a GitHub token in the app or setting up a cross-repository CI token.
+This verifies the retained certificate and version, then publishes the APK, public release notes and feed to the legacy updater repository. Downloads are pinned to an immutable APK commit. Source is public in this repository; signing files remain private. Publishing to the legacy feed needs write access to `pnntrn/cctv-updates`; it does not require embedding a GitHub token in the app or setting up a cross-repository CI token. Direct APK downloads are also available from this repository's Releases page above.
