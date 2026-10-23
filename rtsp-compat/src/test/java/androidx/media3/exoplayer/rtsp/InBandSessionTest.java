@@ -24,10 +24,13 @@ import static org.junit.Assert.*;
 /** Full RTSP negotiation into real parsed codec format; no MediaCodec or camera required. */
 @RunWith(RobolectricTestRunner.class) @Config(sdk=28,manifest=Config.NONE)
 public class InBandSessionTest {
- @Test(timeout=30000) public void playStartsBeforeCodecFormatAndSelectionDoesNotRepeatSetup() throws Exception {
+ @Test(timeout=30000) public void playStartsBeforeCodecFormatAndSelectionDoesNotRepeatSetup() throws Exception { play(true); }
+ @Test(timeout=30000) public void liveSelectionBeforeSamplesDoesNotWaitForAnotherPlay() throws Exception { play(false); }
+ private void play(boolean prefetch) throws Exception {
   byte[] fixture;try(InputStream input=getClass().getResourceAsStream("/inband.h264")){fixture=input.readAllBytes();}
   AtomicBoolean prepared=new AtomicBoolean();
   try(LoopbackRtspServer server=new LoopbackRtspServer(fixture)) {
+   server.pauseAfterFirstFrame=!prefetch;
    RtspMediaPeriod period=new RtspMediaPeriod(new DefaultAllocator(true,65536),
      new TransferRtpDataChannelFactory(10000),Uri.parse(server.url()), timing->{},
      "CCTV-test",SocketFactory.getDefault(),false);
@@ -43,9 +46,22 @@ public class InBandSessionTest {
     assertTrue("Real SPS/PPS format must arrive after RTSP PLAY; server="+server.failure.get(),prepared.get());
     Format f=period.getTrackGroups().get(0).getFormat(0);
     assertEquals(320,f.width);assertEquals(180,f.height);assertEquals(2,f.initializationData.size());
+    long prefetchDeadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(4);
+    while(prefetch && period.getBufferedPositionUs()<400000 && System.nanoTime()<prefetchDeadline){Shadows.shadowOf(Looper.getMainLooper()).idle();Thread.sleep(10);}
+    SampleStream[] selected=new SampleStream[1];
     period.selectTracks(new ExoTrackSelection[]{new FixedTrackSelection(period.getTrackGroups().get(0),0)},
-      new boolean[]{false},new SampleStream[1],new boolean[1],0);
+      new boolean[]{false},selected,new boolean[1],200000);
+    server.pauseAfterFirstFrame=false;
     for(int i=0;i<20;i++){Shadows.shadowOf(Looper.getMainLooper()).idle();Thread.sleep(10);}
+    long bufferDeadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(4);
+    while(period.getBufferedPositionUs()<400000 && System.nanoTime()<bufferDeadline){Shadows.shadowOf(Looper.getMainLooper()).idle();Thread.sleep(10);}
+    assertTrue("Real samples must have increasing timestamps, buffered="+period.getBufferedPositionUs(),period.getBufferedPositionUs()>=400000);
+    androidx.media3.exoplayer.FormatHolder holder=new androidx.media3.exoplayer.FormatHolder();
+    androidx.media3.decoder.DecoderInputBuffer buffer=new androidx.media3.decoder.DecoderInputBuffer(1);
+    int result=selected[0].readData(holder,buffer,0);
+    if(result==androidx.media3.common.C.RESULT_FORMAT_READ)result=selected[0].readData(holder,buffer,0);
+    assertEquals(androidx.media3.common.C.RESULT_BUFFER_READ,result);
+    assertTrue("A complete key frame must be readable",buffer.isKeyFrame());assertTrue(buffer.data.position()>0);
     assertEquals(1,server.setupRequests);assertEquals(1,server.playRequests);assertNull(server.failure.get());
    }finally{period.release();Shadows.shadowOf(Looper.getMainLooper()).idle();}
   }
@@ -60,6 +76,7 @@ public class InBandSessionTest {
         private volatile Thread sender;
         private volatile boolean closed;
         private volatile boolean playing;
+        volatile boolean pauseAfterFirstFrame;
         volatile int singleNalPackets;
         volatile int setupRequests, playRequests;
         volatile int fuPackets;
@@ -166,6 +183,7 @@ public class InBandSessionTest {
                 // Repeat for buffering/slow emulator startup; timestamps and sequence stay monotonic.
                 while (playing && !closed) {
                     for (List<byte[]> frame : frames) {
+                        while (pauseAfterFirstFrame && timestamp > 90000 && playing && !closed) Thread.sleep(10);
                         if (!playing || closed) return;
                         for (int i = 0; i < frame.size(); i++) {
                             byte[] nal = frame.get(i);

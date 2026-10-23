@@ -47,6 +47,7 @@ public final class InBandPlaybackTest {
         }
         CountDownLatch firstFrame = new CountDownLatch(1);
         AtomicReference<PlaybackFailure> failure = new AtomicReference<>();
+        AtomicReference<String> diagnostics = new AtomicReference<>("no failure callback");
         AtomicReference<StreamTile> tile = new AtomicReference<>();
         try (LoopbackRtspServer server = new LoopbackRtspServer(fixture)) {
             try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
@@ -62,6 +63,14 @@ public final class InBandPlaybackTest {
                         @Override public void onFirstFrame() { firstFrame.countDown(); }
                         @Override public void onFailure(PlaybackFailure reason) {
                             failure.compareAndSet(null, reason);
+                            try {
+                                java.lang.reflect.Field field=StreamTile.class.getDeclaredField("player");field.setAccessible(true);
+                                androidx.media3.exoplayer.ExoPlayer p=(androidx.media3.exoplayer.ExoPlayer)field.get(stream);
+                                diagnostics.set("state="+p.getPlaybackState()+",buffered="+p.getBufferedPosition()
+                                    +",position="+p.getCurrentPosition()+",groups="+p.getCurrentTracks().getGroups().size()
+                                    +",videoSelected="+p.getCurrentTracks().isTypeSelected(androidx.media3.common.C.TRACK_TYPE_VIDEO)
+                                    +",format="+p.getVideoFormat()+",shown="+stream.isShown()+",size="+stream.getWidth()+"x"+stream.getHeight());
+                            }catch(Exception e){diagnostics.set(e.getClass().getSimpleName());}
                         }
                     });
                     stream.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
@@ -75,7 +84,8 @@ public final class InBandPlaybackTest {
                 // OPTIONS, DESCRIBE, SETUP and PLAY responses alone must never pass the test.
                 boolean rendered = firstFrame.await(30, TimeUnit.SECONDS);
                 assertTrue("No decoded frame in 30s; playback=" + failure.get()
-                        + "; server=" + server.failure.get(), rendered);
+                        + "; server=" + server.failure.get()+"; setup="+server.setupRequests+"; play="+server.playRequests
+                        +"; single="+server.singleNalPackets+"; fu="+server.fuPackets+"; "+diagnostics.get(), rendered);
                 assertNull("Playback failed before first frame", failure.get());
                 assertNull("Loopback server failed", server.failure.get());
                 assertTrue("Expected single-NAL RTP packets", server.singleNalPackets > 0);
@@ -102,6 +112,7 @@ public final class InBandPlaybackTest {
         private volatile boolean closed;
         private volatile boolean playing;
         volatile int singleNalPackets;
+        volatile int setupRequests,playRequests;
         volatile int fuPackets;
         private OutputStream output;
         private int sequence = 1000;
@@ -158,6 +169,7 @@ public final class InBandPlaybackTest {
                                     + url() + "\r\n", sdp);
                             break;
                         case "SETUP":
+                            setupRequests++;
                             if (!transport.contains("RTP/AVP/TCP")
                                     || !transport.contains("interleaved=0-1")) {
                                 throw new IOException("Expected RTP-over-TCP channels 0-1");
@@ -166,6 +178,7 @@ public final class InBandPlaybackTest {
                                     + "Transport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n", "");
                             break;
                         case "PLAY":
+                            playRequests++;
                             if (sender != null) throw new IOException("Unexpected second PLAY");
                             respond(cseq, "Session: fixture\r\nRange: npt=0.000-\r\n"
                                     + "RTP-Info: url=" + url() + "trackID=1;seq=" + sequence

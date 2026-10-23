@@ -101,6 +101,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
   private boolean prepared;
   private boolean trackSelected;
   private boolean setupRequested;
+  private boolean inBandLiveStartup;
   private int portBindingRetryCount;
   private boolean isUsingRtpTcp;
 
@@ -192,6 +193,8 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
       boolean[] streamResetFlags,
       long positionUs) {
 
+    boolean alreadyPlayingLive = inBandLiveStartup && setupRequested;
+    inBandLiveStartup = false;
     // Deselect old tracks.
     // Input array streams contains the streams selected in the previous track selection.
     for (int i = 0; i < selections.length; i++) {
@@ -232,10 +235,18 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
     trackSelected = true;
     if (positionUs != 0) {
-      // Track selection is performed only once in RTSP streams.
-      requestedSeekPositionUs = positionUs;
-      pendingSeekPositionUs = positionUs;
-      pendingSeekPositionUsForTcpRetry = positionUs;
+      if (setupRequested) {
+        // In-band preparation already started PLAY. Do not create an unresolved pending seek
+        // waiting for another initial PLAY response that will never be sent.
+        // A live initial selection may project slightly past the first available sample.
+        // Keep the live session running while that sample arrives; this is not a user seek.
+        if (!seekInsideBufferUs(positionUs) && !alreadyPlayingLive) return seekToUs(positionUs);
+      } else {
+        // Normal SDP configuration: the initial PLAY will use this selected position.
+        requestedSeekPositionUs = positionUs;
+        pendingSeekPositionUs = positionUs;
+        pendingSeekPositionUsForTcpRetry = positionUs;
+      }
     }
     maybeSetupTracks();
     return positionUs;
@@ -692,6 +703,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
             track.payloadFormat.format.sampleMimeType)
             && track.payloadFormat.format.initializationData.isEmpty();
       }
+      inBandLiveStartup = needsInBandConfiguration && timing.isLive();
       if (needsInBandConfiguration) trackSelected = true;
       for (int i = 0; i < tracks.size(); i++) {
         RtspMediaTrack rtspMediaTrack = tracks.get(i);

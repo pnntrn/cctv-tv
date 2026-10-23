@@ -108,6 +108,8 @@ public final class MainActivity extends Activity {
     private void finishRecorderEditor(boolean discard) {
         if (recorderEditor == null) return;
         captureRecorderDraft(); closeConnectionPreview();
+        AlertDialog exit = draftExitDialog; draftExitDialog = null;
+        if (exit != null) exit.dismiss();
         SharedPreferences.Editor prefs = draftPreferences().edit().remove("active");
         if (discard) prefs.remove(recorderDraft.key());
         prefs.apply(); recorderFields[4].setText("");
@@ -115,14 +117,16 @@ public final class MainActivity extends Activity {
         d.dismiss(); if (started) render();
     }
     private void askLeaveRecorder() {
-        if (draftExitDialog != null) return;
+        if (draftExitDialog != null && draftExitDialog.isShowing()) return;
         captureRecorderDraft();
-        draftExitDialog = new AlertDialog.Builder(this).setTitle("Unsaved recorder changes")
+        AlertDialog confirmation = new AlertDialog.Builder(this).setTitle("Unsaved recorder changes")
                 .setMessage("Keep the nonsecret fields to continue later, or explicitly discard them. Passwords are never kept in a draft.")
                 .setNeutralButton("Continue editing", null)
                 .setNegativeButton("Discard", (d, w) -> finishRecorderEditor(true))
                 .setPositiveButton("Keep draft", (d, w) -> finishRecorderEditor(false)).create();
-        draftExitDialog.setOnDismissListener(d -> draftExitDialog = null); draftExitDialog.show();
+        draftExitDialog = confirmation;
+        confirmation.setOnDismissListener(d -> { if (draftExitDialog == confirmation) draftExitDialog = null; });
+        confirmation.show();
     }
     private void showUpdates() {
         try { if (updater == null) updater = new AppUpdater(this); updater.show(); }
@@ -716,7 +720,7 @@ public final class MainActivity extends Activity {
             if (code == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP) { askLeaveRecorder(); return true; }
             return code == KeyEvent.KEYCODE_BACK;
         });
-        editor.setOnShowListener(ignored -> {
+        Runnable bindEditor = () -> {
             editor.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v -> askLeaveRecorder());
             Button testButton = editor.getButton(AlertDialog.BUTTON_POSITIVE);
             for (int i = 0; i < recorderFields.length; i++) {
@@ -749,13 +753,13 @@ public final class MainActivity extends Activity {
                     });
                 } catch (IllegalArgumentException e) { toast(e.getMessage()); }
             });
-        });
+        };
         for (EditText field : recorderFields) if (field != pass) field.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
             public void onTextChanged(CharSequence s, int start, int before, int count) { captureRecorderDraft(); }
             public void afterTextChanged(Editable e) { }
         });
-        editor.show(); captureRecorderDraft();
+        editor.show(); bindEditor.run(); captureRecorderDraft();
         editor.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
     }
 
@@ -792,20 +796,20 @@ public final class MainActivity extends Activity {
                 });
             }
         });
-        test.setOnShowListener(d -> {
+        Runnable bindPreview = () -> {
             test.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(onVerified == null);
             test.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
                 if (onVerified != null && (!started || !previewVerified || generation != previewGeneration)) return;
                 test.dismiss(); if (onVerified != null) onVerified.run();
             });
             preview.start(0);
-        });
+        };
         test.setOnDismissListener(d -> {
             preview.release(); streams.remove(preview);
             if (connectionPreview == test) { connectionPreview = null; previewVerified = false; previewGeneration++; }
         });
         test.setOnKeyListener((d, code, event) -> code == KeyEvent.KEYCODE_MENU);
-        test.show();
+        test.show(); bindPreview.run();
     }
 
     private void startPhoneSetup() {

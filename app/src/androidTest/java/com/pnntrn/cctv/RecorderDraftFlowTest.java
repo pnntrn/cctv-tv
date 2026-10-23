@@ -196,7 +196,10 @@ public class RecorderDraftFlowTest {
                 field(a,"First channel").setText("1");field(a,"Channel count").setText("11");
                 field(a,"New camera name prefix").setText("กล้อง");
                 EditText prefix=field(a,"New camera name prefix");prefix.requestFocus();
-                prefix.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_DOWN));
+            }catch(Exception e){throw new AssertionError(e);}});
+            androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressDPadDown();
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+            scenario.onActivity(a->{try {
                 AlertDialog editor=(AlertDialog)get(a,"recorderEditor");
                 assertTrue(editor.getButton(AlertDialog.BUTTON_POSITIVE).hasFocus());
                 editor.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
