@@ -190,8 +190,8 @@ public final class MainActivity extends Activity {
         LinearLayout header = row();
         ImageView logo = new ImageView(this); logo.setImageResource(R.drawable.cctv_wordmark);
         logo.setContentDescription("CCTV");
-        header.addView(logo, new LinearLayout.LayoutParams(dp(88), dp(40)));
-        TextView name = text("  /  " + (current == null ? "Welcome" : current.name), 19, TEXT);
+        header.addView(logo, new LinearLayout.LayoutParams(dp(72), dp(40)));
+        TextView name = text(current == null ? "Welcome" : current.name, 19, TEXT);
         name.setTypeface(null, Typeface.BOLD);
         name.setMaxLines(1); name.setEllipsize(android.text.TextUtils.TruncateAt.END);
         header.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
@@ -230,7 +230,7 @@ public final class MainActivity extends Activity {
                 p.setMargins(dp(3), dp(3), dp(3), dp(3)); line.addView(tile, p);
                 if (absolute >= current.cameras.size()) { tile.setBackground(box(0xFF0E1724, 0)); continue; }
                 Camera c = current.cameras.get(absolute);
-                tile.setId(View.generateViewId()); tile.setFocusable(true); tile.setClickable(true);
+                tile.setId(View.generateViewId()); tile.setFocusable(true); tile.setFocusableInTouchMode(true); tile.setClickable(true);
                 tile.setPadding(dp(3), dp(3), dp(3), dp(3)); tile.setBackground(box(PANEL, 0));
                 if (arranging) {
                     TextView label = text((absolute + 1) + "\n" + c.name + (grabbed == absolute ? "\nMoving • arrows then OK" : "\nOK to pick up"), 19, TEXT);
@@ -277,7 +277,8 @@ public final class MainActivity extends Activity {
         }
         LinearLayout footer = row();
         String hint = arranging ? "OK pick / drop  •  Arrows move  •  Back cancel" : "OK expand  •  Hold OK options  •  Menu cameras";
-        footer.addView(text(hint, 12, 0xFFA2B2C9), new LinearLayout.LayoutParams(0, -2, 1));
+        TextView controls = text(hint, 12, 0xFFA2B2C9); controls.setSingleLine(true); controls.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        footer.addView(controls, new LinearLayout.LayoutParams(0, -2, 1));
         footer.addView(text((page + 1) + " / " + CameraRules.pageCount(current.cameras.size(), current.grid), 13, MINT));
         addButton(footer, button("‹ Prev", () -> changePage(-1)));
         nextButton = button("Next ›", () -> changePage(1)); addButton(footer, nextButton);
@@ -318,7 +319,7 @@ public final class MainActivity extends Activity {
         help.setBackgroundColor(0xB8101825);
         FrameLayout.LayoutParams hint = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
         hint.setMargins(dp(16), dp(16), dp(16), 0); frame.addView(help, hint);
-        frame.setFocusable(true); frame.requestFocus(); revealChrome();
+        frame.setFocusable(true); frame.setFocusableInTouchMode(true); frame.requestFocus(); revealChrome();
     }
 
     private boolean fullSub;

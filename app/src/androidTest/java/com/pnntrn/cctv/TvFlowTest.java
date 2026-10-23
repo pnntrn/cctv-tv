@@ -31,6 +31,7 @@ public class TvFlowTest {
         UiDevice d=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
             assertTrue(d.wait(Until.hasObject(By.textContains("Substreams")),10000));
+            assertTrue(d.wait(Until.hasObject(By.descStartsWith("Camera 1,").focused(true)),5000));
             shot(d,"grid");
             d.pressDPadCenter();assertTrue(d.wait(Until.hasObject(By.textContains("Back grid")),5000));
             shot(d,"fullscreen");d.pressBack();

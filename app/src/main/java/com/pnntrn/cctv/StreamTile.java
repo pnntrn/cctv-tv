@@ -57,10 +57,12 @@ public final class StreamTile extends FrameLayout {
         surface.setFocusable(false);
         addView(surface, new LayoutParams(-1, -1));
         status = label("Connecting…", 12);
+        status.setMaxLines(main ? 3 : 2); status.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LayoutParams state = new LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
         state.setMargins(dp(8), dp(8), dp(8), 0);
         addView(status, state);
         title = label(camera.name + (main ? "   •   MAIN" : "   •   SUB"), main ? 18 : 13);
+        title.setSingleLine(true); title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LayoutParams caption = new LayoutParams(-1, -2, Gravity.BOTTOM);
         addView(title, caption);
         setContentDescription(camera.name + (main ? ", mainstream fullscreen" : ", press OK to view mainstream, hold OK for options"));
@@ -171,6 +173,8 @@ public final class StreamTile extends FrameLayout {
     @Override protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
         int w = right - left, h = bottom - top;
+        int lines = main ? 3 : h < dp(110) ? 1 : 2;
+        if (status.getMaxLines() != lines) status.setMaxLines(lines);
         int vw = w, vh = Math.round(w / aspect);
         if (vh > h) { vh = h; vw = Math.round(h * aspect); }
         surface.layout((w - vw) / 2, (h - vh) / 2, (w + vw) / 2, (h + vh) / 2);
