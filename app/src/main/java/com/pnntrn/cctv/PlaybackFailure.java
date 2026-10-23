@@ -6,6 +6,7 @@ import java.util.Locale;
 public enum PlaybackFailure {
     AUTH("Username or password rejected", false),
     PATH("Stream path / channel not found", false),
+    STREAM_METADATA("RTSP codec metadata missing • player update needed", false),
     DECODER("Video unsupported or decoder limit • try H.264 / fewer tiles", false),
     NETWORK("Cannot reach camera • check IP, port and network", true),
     TIMEOUT("Stream timed out • check network and camera", true),
@@ -21,8 +22,10 @@ public enum PlaybackFailure {
             if (s.matches("(?s).*(\\b404\\b|not found).*")) return PATH;
             if (s.contains("timeout") || s.contains("timed out")) return TIMEOUT;
             if (s.contains("connectexception") || s.contains("unknownhost") || s.contains("unreachable") || s.contains("refused")) return NETWORK;
+            if (s.contains("missing attribute fmtp")) return STREAM_METADATA;
             if (s.contains("unsupported") || s.contains("decoder")) return DECODER;
         }
         return UNKNOWN;
     }
 }
+

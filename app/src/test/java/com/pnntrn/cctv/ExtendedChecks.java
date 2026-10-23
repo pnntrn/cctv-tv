@@ -53,8 +53,28 @@ public final class ExtendedChecks {
         check(PlaybackFailure.classify(new ConnectException(),0)==PlaybackFailure.NETWORK,"network error");
         check(PlaybackFailure.classify(new IOException("404"),0)==PlaybackFailure.PATH,"path error");
         check(PlaybackFailure.classify(new IOException(),4001)==PlaybackFailure.DECODER,"decoder error");
+        testMissingFmtp();
         testProbe(false);testProbe(true);
         System.out.println("Passed "+checks+" extended checks");
+    }
+    static void testMissingFmtp() {
+        Throwable failure = new IOException("Source error",
+                new IllegalArgumentException("missing attribute fmtp"));
+        PlaybackFailure reason = PlaybackFailure.classify(failure, 0);
+        check(!reason.retry, "missing fmtp must not retry the same unsupported SDP");
+        check(reason.message.contains("RTSP") && reason.message.contains("metadata"),
+                "missing fmtp explains stream metadata incompatibility");
+        check(PlaybackFailure.classify(new IOException("Source error",
+                new IllegalArgumentException("MISSING ATTRIBUTE FMTP")), 0) == reason,
+                "fmtp classification is case insensitive");
+        check(PlaybackFailure.classify(new IOException("unrecognized response"), 0) == PlaybackFailure.UNKNOWN,
+                "unknown transient failures retain existing handling");
+        check(PlaybackFailure.classify(new IOException("RTSP 401"), 0) == PlaybackFailure.AUTH,
+                "authentication remains distinct from stream metadata");
+        check(PlaybackFailure.classify(new IOException(), 4001) == PlaybackFailure.DECODER,
+                "decoder capacity remains distinct from stream metadata");
+        check(!reason.message.contains("secret-user") && !reason.message.contains("rtsp://"),
+                "message does not expose credentials or authenticated URLs");
     }
     static void testProbe(boolean basic) throws Exception {
         try(ServerSocket server=new ServerSocket(0,1,InetAddress.getLoopbackAddress())){
@@ -75,3 +95,4 @@ public final class ExtendedChecks {
         }
     }
 }
+
