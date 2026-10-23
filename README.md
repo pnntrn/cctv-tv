@@ -42,7 +42,7 @@ VIGI NVR RTSP requires compatible firmware and an enabled server. Camera paths `
 4. Add or edit a recorder or standalone camera. Blank saved passwords/URLs keep their existing values; saved passwords and RTSP URLs are never sent back to the phone.
 5. **Test connection** checks RTSP authentication and whether a video stream exists. It is a protocol check, not a decoder/picture guarantee. **Save to TV** uses a single-use proof for that exact tested configuration. A TV preview verifies decoding separately.
 
-This is a temporary local HTTP service, not a cloud service. Use a trusted network: credentials travel over that local connection. The service uses an origin/host check, same-site HTTP-only session cookies, a bounded request size and one paired IP. It has no file browsing, cloud relay, open CORS or background setup server. Closing pairing discards pending drafts and invalidates the session.
+This is a temporary local HTTP service, not a cloud service. Use a trusted network: credentials travel over that local connection. The service uses an origin/host check, same-site HTTP-only session cookies, a bounded request size and one paired IP. It has no file browsing, cloud relay, open CORS or background setup server. Closing pairing prevents pending drafts from being saved and invalidates the session.
 
 ## Error messages
 
@@ -57,17 +57,29 @@ Authentication rejection, missing stream paths, network reachability, timeouts a
 - `cctv-release-unsigned.apk`: build output when signing is not configured; cannot be installed directly.
 - `SHA256SUMS`: hashes of the outputs.
 
-**Permanent signing requires one private GitHub repository secret: `CCTV_SIGNING_BUNDLE`.** It contains JSON with `keystore` (base64 PKCS12), `password`, and `alias`. The workflow uses it only in runner temporary storage, masks the password and deletes the keystore before artifact upload. No private key is committed or included in artifacts.
+**Automatic CI signing requires one private GitHub repository secret: `CCTV_SIGNING_BUNDLE`.** It contains JSON with `keystore` (base64 PKCS12), `password`, and `alias`. The workflow uses it only in runner temporary storage, masks the password and deletes the keystore before artifact upload. No private key is committed or included in artifacts.
 
 On a trusted computer with JDK 17, Python 3 and an authenticated GitHub CLI, run `bash scripts/configure-signing.sh` once. It creates a retained RSA key, keeps a private backup outside this project, and saves the repository secret without printing it. Retain that backup securely; never replace the key during normal updates. Then run the workflow again and install `cctv-release.apk`.
 
+The first 0.2.0 release was signed separately with the retained key and its APK v2/v3 signatures verified. Its certificate SHA-256 is `4bb96b0ff9021cc49885f9cdd02d62ec3e58c3704cd65853e8dc2269316c5f9b`. It is approximately 418 KiB. Automatic signed CI output is still pending the repository secret.
+
 The old development build used an ephemeral debug key. Moving from that build to the retained release key may require a one-time uninstall, which removes local profiles. Subsequent releases signed with the retained key install as updates. Debug builds continue using development keys and are not the supported upgrade channel. CI version codes increase with workflow run number.
+
+## Native UI preview
+
+These are native emulator screenshots using deliberately offline fixture cameras, not real CCTV footage.
+
+![Live camera grid](docs/screenshots/grid.png)
+
+![Recorder settings](docs/screenshots/recorder.png)
 
 ## Validation
 
 - `bash scripts/check-core.sh` executes the production Java rules: original 48 checks plus recorder updates, legacy linking, pairing access and RTSP probe tests.
 - GitHub Actions runs unit tests, HTTP setup protocol tests, Android lint and debug/release compilation.
 - A landscape Android emulator smoke job checks navigation, fullscreen/back, settings, recorder editing, saved arrangement and reopen behavior. It publishes native screenshots under **native-ui-screenshots**. Fixture cameras use loopback URLs, with no real camera credentials or footage.
+- [Verified build and emulator run](https://github.com/pnntrn/cctv-apk/actions/runs/39948381626) passed for application commit `85cbc4a9987cefd1324e5c8f1cc38a85da0faa2e`.
+- `bash scripts/check-digest.sh` additionally checks MD5 Digest authentication with and without qop, including reserved credential/path characters.
 - A physical TV stick and reachable NVR are still needed to verify real-camera compatibility, Wi-Fi behavior and decoder capacity.
 
 Toolchain: JDK 17, Gradle 8.11.1, AGP 8.9.2, SDK 35, Media3 1.8.0. There is no Gradle wrapper binary; CI installs the pinned Gradle distribution. Local commands: `gradle testDebugUnitTest lintDebug assembleDebug assembleRelease`.
