@@ -35,48 +35,38 @@ public class TvFlowTest {
         ArrayList<Location> data=new ArrayList<>();data.add(shop);store.save(data);
         UiDevice d=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
-            assertTrue(d.wait(Until.hasObject(By.textContains("Substreams")),10000));
+            assertTrue(d.wait(Until.hasObject(By.descStartsWith("Camera ")),10000));
             assertTrue(d.wait(Until.hasObject(By.descStartsWith("Camera 1,").focused(true)),5000));
             shot(d,"grid");
-            d.pressDPadCenter();assertTrue(d.wait(Until.hasObject(By.textContains("Back grid")),5000));
+            d.pressDPadCenter();assertTrue(d.wait(Until.hasObject(By.textContains("ย้อนกลับ ตารางกล้อง")),5000));
             shot(d,"fullscreen");d.pressBack();
-            assertTrue(d.wait(Until.hasObject(By.textContains("Substreams")),5000));
-            d.findObject(By.text("Settings")).click();
-            assertTrue(d.wait(Until.hasObject(By.text("Recorders")),5000));shot(d,"settings");
-            d.findObject(By.text("Check for updates")).click();
-            assertTrue(d.wait(Until.hasObject(By.textContains("Installed: CCTV")),5000));
+            assertTrue(d.wait(Until.hasObject(By.descStartsWith("Camera ")),5000));
+            // ViewingFlowTest covers physical entry. This integration fixture uses the real confirmed transition.
+            scenario.onActivity(a->{try {var enter=MainActivity.class.getDeclaredMethod("enterTechnician");
+                enter.setAccessible(true);enter.invoke(a);}catch(Exception e){throw new AssertionError(e);}});
+            assertTrue(d.wait(Until.hasObject(By.text("แก้ไขเครื่องบันทึก")),5000));shot(d,"settings");
+            d.findObject(By.text("ตรวจสอบอัปเดต")).click();
+            assertTrue(d.wait(Until.hasObject(By.textContains("เวอร์ชันที่ติดตั้ง: CCTV")),5000));
             shot(d,"updates");d.pressBack();
-            assertTrue(d.wait(Until.hasObject(By.text("Recorders")),5000));
-            d.findObject(By.text("Recorders")).click();
-            d.wait(Until.findObject(By.text("Shop recorder")),5000).click();
-            assertTrue(d.wait(Until.hasObject(By.text("Recorder name")),5000));shot(d,"recorder");d.pressBack();
-            d.wait(Until.findObject(By.text(java.util.regex.Pattern.compile("(?i)Discard"))),5000).click();
-            d.wait(Until.findObject(By.text("Set up from phone")),5000).click();
+            assertTrue(d.wait(Until.hasObject(By.text("แก้ไขเครื่องบันทึก")),5000));
+            d.findObject(By.text("แก้ไขเครื่องบันทึก")).click();
+            assertTrue(d.wait(Until.hasObject(By.text("ชื่อเครื่องบันทึก")),5000));shot(d,"recorder");d.pressBack();
+            d.wait(Until.findObject(By.text(java.util.regex.Pattern.compile("ละทิ้ง"))),5000).click();
+            d.wait(Until.findObject(By.text("ขั้นสูง")),5000).click();
+            d.wait(Until.findObject(By.text("ตั้งค่าผ่านโทรศัพท์")),5000).click();
             // Standard emulator LAN may not expose a private IPv4. Both the pairing dialog and
             // explicit network-unavailable feedback are valid; the HTTP protocol is unit-tested.
-            var close = d.wait(Until.findObject(By.text(java.util.regex.Pattern.compile("(?i)close pairing"))),5000);
+            var close = d.wait(Until.findObject(By.text(java.util.regex.Pattern.compile("ปิดการจับคู่"))),5000);
             if(close != null) { d.pressBack(); }
-            assertTrue(d.wait(Until.hasObject(By.text("Recorders")),5000));
-            d.findObject(By.text("‹ Live")).click();
-            d.findObject(By.text("Arrange")).click();
-            assertTrue(d.wait(Until.hasObject(By.text("Save order")),5000));
-            var focused=d.findObject(By.descStartsWith("Camera ").focused(true));
-            if(focused==null){d.pressDPadDown();focused=d.wait(Until.findObject(By.descStartsWith("Camera ").focused(true)),5000);}
-            assertNotNull("Remote focus must reach a camera",focused);
-            String description=focused.getContentDescription();
-            int from=Integer.parseInt(description.substring(7,description.indexOf(',')))-1;
-            movedId[0]=store.load().get(0).cameras.get(from).id;
-            movedTo[0]=from+(from%2==0?1:-1);
-            d.pressDPadCenter();
-            if(from%2==0)d.pressDPadRight();else d.pressDPadLeft();
-            assertTrue(d.wait(Until.hasObject(By.desc(description).focused(true)),5000));
-            d.pressDPadCenter();
-            d.findObject(By.text("Save order")).click();
-            assertTrue(d.wait(Until.hasObject(By.textContains("Substreams")),5000));
+            assertTrue(d.wait(Until.hasObject(By.text("แก้ไขเครื่องบันทึก")),5000));
+            // Reordering now belongs exclusively to technician setup, using the same saved IDs.
+            d.wait(Until.findObject(By.desc("ย้าย Camera 1 ลง")),5000).click();
+            d.wait(Until.findObject(By.text("ดูกล้อง")),5000).click();
+            assertTrue(d.wait(Until.hasObject(By.descStartsWith("Camera ")),5000));
             assertEquals(movedId[0],store.load().get(0).cameras.get(movedTo[0]).id);
         }
         try(ActivityScenario<MainActivity> again=ActivityScenario.launch(MainActivity.class)){
-            assertTrue(d.wait(Until.hasObject(By.textContains("Substreams")),5000));
+            assertTrue(d.wait(Until.hasObject(By.descStartsWith("Camera ")),5000));
             assertEquals(movedId[0],store.load().get(0).cameras.get(movedTo[0]).id);
         }
     }

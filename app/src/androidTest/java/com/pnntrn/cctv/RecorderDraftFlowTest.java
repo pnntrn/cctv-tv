@@ -48,9 +48,18 @@ public class RecorderDraftFlowTest {
     }
     private EditText field(MainActivity a, String label) throws Exception {
         AlertDialog dialog=(AlertDialog)get(a,"recorderEditor"); assertNotNull(dialog);
-        EditText result=field(dialog.getWindow().getDecorView(),label); assertNotNull(label,result); return result;
+        String[] labels={"Recorder name","IP address or hostname","RTSP port","Username","Password","First channel","Channel count","New camera name prefix"};
+        int index=java.util.Arrays.asList(labels).indexOf(label); assertTrue(label,index>=0);
+        EditText result=((EditText[])get(a,"recorderFields"))[index]; assertNotNull(label,result); return result;
+    }
+    private void enter(MainActivity a) throws Exception {
+        // Targeted draft fixtures enter through the same transition as the confirmed technician gate.
+        // ViewingFlowTest separately exercises real remote entry and accidental-input protection.
+        Method m=MainActivity.class.getDeclaredMethod("enterTechnician");m.setAccessible(true);m.invoke(a);
     }
     private void open(MainActivity a) throws Exception {
+        if (!(boolean)get(a,"technician")) enter(a);
+        if (get(a,"recorderEditor") != null) return;
         Method m=MainActivity.class.getDeclaredMethod("editNvr",Nvr.class,CameraRules.Preset.class);
         m.setAccessible(true); m.invoke(a,null,CameraRules.Preset.HIKVISION);
     }
@@ -73,6 +82,8 @@ public class RecorderDraftFlowTest {
             scenario.moveToState(Lifecycle.State.CREATED); scenario.moveToState(Lifecycle.State.RESUMED);
             scenario.recreate();
             scenario.onActivity(a->{try {
+                assertNull("Viewing must not automatically restore an editor",get(a,"recorderEditor"));
+                enter(a);
                 assertEquals("Unfinished fixture",field(a,"Recorder name").getText().toString());
                 assertEquals("999999999999",field(a,"RTSP port").getText().toString());
                 assertEquals("",field(a,"First channel").getText().toString());
@@ -88,13 +99,14 @@ public class RecorderDraftFlowTest {
                 assertEquals("not-a-number",field(a,"Channel count").getText().toString());
             }catch(Exception e){throw new AssertionError(e);}});
             // Keep draft is the explicit positive choice on the unsaved-changes dialog.
-            androidx.test.uiautomator.UiDevice device=androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
-            device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text(java.util.regex.Pattern.compile("(?i)Keep draft"))),5000).click();
+            scenario.onActivity(a->{try {((AlertDialog)get(a,"draftExitDialog")).getButton(AlertDialog.BUTTON_POSITIVE).performClick();}
+                catch(Exception e){throw new AssertionError(e);}});
             scenario.onActivity(a->{try {open(a); assertEquals("Unfinished fixture",field(a,"Recorder name").getText().toString());
                 assertEquals("not-a-number",field(a,"Channel count").getText().toString());
                 ((AlertDialog)get(a,"recorderEditor")).getButton(AlertDialog.BUTTON_NEGATIVE).performClick();}
                 catch(Exception e){throw new AssertionError(e);}});
-            device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text(java.util.regex.Pattern.compile("(?i)Discard"))),5000).click();
+            scenario.onActivity(a->{try {((AlertDialog)get(a,"draftExitDialog")).getButton(AlertDialog.BUTTON_NEGATIVE).performClick();}
+                catch(Exception e){throw new AssertionError(e);}});
             scenario.onActivity(a->{try {open(a); assertNotEquals("Unfinished fixture",field(a,"Recorder name").getText().toString());}
                 catch(Exception e){throw new AssertionError(e);}});
         } finally {c.getSharedPreferences("recorder-drafts",0).edit().clear().commit();}
@@ -148,6 +160,8 @@ public class RecorderDraftFlowTest {
             callback[0].onFirstFrame(); InstrumentationRegistry.getInstrumentation().waitForIdleSync();
             scenario.onActivity(a->{try {
                 assertNull(get(a,"connectionPreview"));
+                assertNull("Backgrounding returns to viewing",get(a,"recorderEditor"));
+                enter(a);
                 assertEquals("Retained editor",field(a,"Recorder name").getText().toString());
                 assertEquals("",field(a,"Password").getText().toString());
             }catch(Exception e){throw new AssertionError(e);}});
@@ -168,6 +182,7 @@ public class RecorderDraftFlowTest {
         try {
             try(ActivityScenario<MainActivity> first=ActivityScenario.launch(MainActivity.class)) {
                 first.onActivity(a->{try {
+                    enter(a);
                     Method m=MainActivity.class.getDeclaredMethod("editNvr",Nvr.class,CameraRules.Preset.class);
                     m.setAccessible(true); m.invoke(a,recorder,recorder.preset);
                     assertEquals("",field(a,"Password").getText().toString());
@@ -178,6 +193,8 @@ public class RecorderDraftFlowTest {
             // A new Activity has no retained editor or saved-instance Bundle from the first launch.
             try(ActivityScenario<MainActivity> second=ActivityScenario.launch(MainActivity.class)) {
                 second.onActivity(a->{try {
+                    assertNull("Fresh viewing cannot expose retained drafts",get(a,"recorderEditor"));
+                    enter(a);
                     assertEquals("Persisted nonsecret draft",field(a,"Recorder name").getText().toString());
                     assertTrue("Restored editor must not leave camera streams running", ((ArrayList<?>)get(a,"streams")).isEmpty());
                     assertEquals("",field(a,"Channel count").getText().toString());

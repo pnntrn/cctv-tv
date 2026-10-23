@@ -16,14 +16,17 @@ adb shell wm dismiss-keyguard
 adb install -r "$(find test-apks -name app-debug.apk -print -quit)"
 adb install -r "$(find test-apks -name app-debug-androidTest.apk -print -quit)"
 : > ui-results/instrumentation.txt
-for test_class in InBandPlaybackTest RecorderDraftFlowTest TvFlowTest; do
+for test_class in InBandPlaybackTest RecorderDraftFlowTest TvFlowTest ViewingFlowTest; do
   adb shell pm clear com.pnntrn.cctv >/dev/null
   adb logcat -c
   adb shell am instrument -w -e class "com.pnntrn.cctv.$test_class" com.pnntrn.cctv.test/androidx.test.runner.AndroidJUnitRunner | tee -a ui-results/instrumentation.txt
   adb logcat -d -v brief -s ExoPlayerImplInternal MediaCodecVideoRenderer ACodec OMXClient MediaCodec SoftAVC SoftAVCDec OMXNodeInstance > "ui-results/$test_class-codec.txt"
-done
-for name in grid fullscreen settings recorder updates; do
-  adb exec-out run-as com.pnntrn.cctv cat "files/ui-$name.png" > "ui-results/$name.png" || rm -f "ui-results/$name.png"
+  # Save each class's captures before the next clean-install fixture reset removes them.
+  for name in grid fullscreen settings recorder updates idle viewing-menu technician-entry technician-empty; do
+    if adb shell run-as com.pnntrn.cctv test -f "files/ui-$name.png"; then
+      adb exec-out run-as com.pnntrn.cctv cat "files/ui-$name.png" > "ui-results/$name.png"
+    fi
+  done
 done
 # Instrumentation may exit zero even when assertions fail.
 python3 - <<'PYCODE'
@@ -36,5 +39,6 @@ for p in Path('ui-results').glob('*.png'):
     else:
         assert struct.unpack('>II',data[16:24]) == (1920,1080), 'Native UI screenshots must use physical TV geometry'
 output=Path('ui-results/instrumentation.txt').read_text()
-assert len(re.findall(r'OK \([0-9]+ tests?\)',output)) == 3, 'Android instrumentation assertions failed'
+assert not re.search(r'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed', output), 'Android instrumentation failed or crashed'
+assert len(re.findall(r'OK \([0-9]+ tests?\)',output)) == 4, 'Android instrumentation assertions failed'
 PYCODE

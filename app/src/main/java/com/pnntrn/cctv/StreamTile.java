@@ -56,16 +56,16 @@ public final class StreamTile extends FrameLayout {
         surface = new SurfaceView(context);
         surface.setFocusable(false);
         addView(surface, new LayoutParams(-1, -1));
-        status = label("Connecting…", 12);
+        status = label(context.getString(R.string.common_connecting), 12);
         status.setMaxLines(main ? 3 : 2); status.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LayoutParams state = new LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
         state.setMargins(dp(8), dp(8), dp(8), 0);
         addView(status, state);
-        title = label(camera.name + (main ? "   •   MAIN" : "   •   SUB"), main ? 18 : 13);
+        title = label(context.getString(main ? R.string.common_stream_main : R.string.common_stream_sub, camera.name), main ? 18 : 13);
         title.setSingleLine(true); title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LayoutParams caption = new LayoutParams(-1, -2, Gravity.BOTTOM);
         addView(title, caption);
-        setContentDescription(camera.name + (main ? ", mainstream fullscreen" : ", press OK to view mainstream, hold OK for options"));
+        setContentDescription(context.getString(main ? R.string.common_stream_fullscreen_description : R.string.common_stream_grid_description, camera.name));
     }
 
     private int dp(int x) { return Math.round(x * getResources().getDisplayMetrics().density); }
@@ -84,7 +84,7 @@ public final class StreamTile extends FrameLayout {
         if (released) return;
         releasePlayer();
         final int token = ++generation;
-        status.setVisibility(VISIBLE); status.setText("Connecting…");
+        status.setVisibility(VISIBLE); status.setText(R.string.common_connecting);
         try {
             DefaultTrackSelector selector = new DefaultTrackSelector(getContext());
             selector.setParameters(selector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
@@ -143,9 +143,9 @@ public final class StreamTile extends FrameLayout {
         if (released) return;
         if (listener != null) listener.onFailure(reason);
         if (released) return;
-        if (autoRetry && reason.retry) { retry(reason.message); return; }
+        if (autoRetry && reason.retry) { retry(UiText.playback(getContext(), reason)); return; }
         generation++; handler.removeCallbacksAndMessages(null); releasePlayer();
-        status.setVisibility(VISIBLE); status.setText(reason.message);
+        status.setVisibility(VISIBLE); status.setText(UiText.playback(getContext(), reason));
     }
 
     private void retry(String reason) {
@@ -155,7 +155,7 @@ public final class StreamTile extends FrameLayout {
         releasePlayer();
         long delay = Math.min(30000, 2000L << Math.min(failures++, 4));
         status.setVisibility(VISIBLE);
-        status.setText(reason + " • retry in " + delay / 1000 + "s");
+        status.setText(getContext().getString(R.string.common_stream_retry, reason, delay / 1000));
         handler.postDelayed(this::connect, delay);
     }
 

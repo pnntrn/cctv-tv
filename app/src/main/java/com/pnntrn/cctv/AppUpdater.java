@@ -54,7 +54,7 @@ public final class AppUpdater implements AutoCloseable {
     private void replace(String title, String message, String primary, Runnable action, boolean busy) {
         if(dialog!=null) { dialog.setOnDismissListener(null);dialog.dismiss(); }
         AlertDialog.Builder builder=new AlertDialog.Builder(activity).setTitle(title).setMessage(message)
-                .setNegativeButton(busy?"Cancel":"Close",(d,w)->{});
+                .setNegativeButton(busy?R.string.common_cancel:R.string.common_close,(d,w)->{});
         if(primary!=null)builder.setPositiveButton(primary,(d,w)->{});
         dialog=builder.create();
         dialog.setOnDismissListener(d->{ cancelWork(); dialog=null; });
@@ -67,27 +67,28 @@ public final class AppUpdater implements AutoCloseable {
         dialog.show();dialog.getWindow().setLayout(dp(600),-2);
     }
     private int dp(int value){return Math.round(value*activity.getResources().getDisplayMetrics().density);}
-    private String current(){return "Installed: CCTV "+installed.versionName+" ("+version(installed)+")";}
+    private String text(int id,Object... args){return activity.getString(id,args);}
+    private String current(){return text(R.string.common_update_current,installed.versionName,version(installed));}
     private void check() {
         cancelWork();release=null;final long token=generation;
-        replace("CCTV updates",current()+"\n\nChecking update server…",null,null,true);
+        replace(text(R.string.common_update_title),current()+"\n\n"+text(R.string.common_update_checking),null,null,true);
         UpdateTransfer task=new UpdateTransfer();transfer=task;
         WORKER.execute(()->{try{
             Release found=Release.parse(task.manifest(UpdatePolicy.FEED));
             post(token,()->{
                 release=found;
-                if(!UpdatePolicy.newer(found.code,version(installed)))replace("You’re up to date",current()+"\n\nNo newer version is available.","Check again",this::check,false);
-                else if(found.minSdk>Build.VERSION.SDK_INT)replace("New version needs newer Android",current()+"\n\nCCTV "+found.name+" needs Android API "+found.minSdk+" or later.",null,null,false);
-                else replace("CCTV "+found.name+" is available",current()+"\nDownload: "+String.format(java.util.Locale.ROOT,"%.1f MB",found.size/1048576.0)+"\n\n"+found.notes+"\n\nYour locations and camera order stay saved. Android will ask you to confirm installation.","Download update",this::download,false);
+                if(!UpdatePolicy.newer(found.code,version(installed)))replace(text(R.string.common_update_latest),current()+"\n\n"+text(R.string.common_update_none),text(R.string.common_update_check_again),this::check,false);
+                else if(found.minSdk>Build.VERSION.SDK_INT)replace(text(R.string.common_update_android_title),current()+"\n\n"+text(R.string.common_update_android_message,found.name,found.minSdk),null,null,false);
+                else replace(text(R.string.common_update_available,found.name),text(R.string.common_update_details,current(),String.format(java.util.Locale.ROOT,"%.1f MB",found.size/1048576.0)),text(R.string.common_update_download),this::download,false);
             });
-        }catch(Exception e){post(token,()->error("Could not check for updates. Check your internet connection and try again.",this::check));}});
+        }catch(Exception e){post(token,()->error(text(R.string.common_update_check_error),this::check));}});
     }
     private void post(long token,Runnable result){handler.post(()->{if(!closed&&token==generation&&dialog!=null&&!activity.isFinishing())result.run();});}
-    private void error(String message,Runnable retry){replace("Update unavailable",current()+"\n\n"+message,"Retry",retry,false);}
+    private void error(String message,Runnable retry){replace(text(R.string.common_update_unavailable),current()+"\n\n"+message,text(R.string.common_retry),retry,false);}
     private void download(){
         if(release==null)return;
         cancelWork();final long token=generation;Release target=release;
-        replace("Downloading CCTV "+target.name,"Downloading… 0%\n\nYou can cancel with Back. Your camera settings stay saved.",null,null,true);
+        replace(text(R.string.common_update_downloading_title,target.name),text(R.string.common_update_downloading,0),null,null,true);
         UpdateTransfer task=new UpdateTransfer();transfer=task;
         WORKER.execute(()->{
             File apk=UpdateApkProvider.apk(activity), partial=null;
@@ -95,11 +96,11 @@ public final class AppUpdater implements AutoCloseable {
                 if(!apk.getParentFile().isDirectory()&&!apk.getParentFile().mkdirs())throw new java.io.IOException("Cannot create update directory");
                 partial=File.createTempFile("download-", ".part", apk.getParentFile());
                 if(apk.exists()&&!apk.delete())throw new java.io.IOException("Cannot replace old update");
-                task.download(target.url,partial,target.size,target.hash,p->post(token,()->dialog.setMessage("Downloading… "+p+"%\n\nYou can cancel with Back. Your camera settings stay saved.")));
+                task.download(target.url,partial,target.size,target.hash,p->post(token,()->dialog.setMessage(text(R.string.common_update_downloading,p))));
                 verify(partial,target);if(task.cancelled.get())throw new java.io.InterruptedIOException();
                 if(!partial.renameTo(apk))throw new java.io.IOException("Cannot prepare installer");
                 post(token,this::ready);
-            }catch(Exception e){if(partial!=null)partial.delete();post(token,()->error("The update could not be downloaded or verified. Nothing has been installed. Check your connection and retry.",this::download));}
+            }catch(Exception e){if(partial!=null)partial.delete();post(token,()->error(text(R.string.common_update_download_error),this::download));}
         });
     }
     @SuppressWarnings("deprecation") private void verify(File apk,Release target)throws Exception{
@@ -112,23 +113,23 @@ public final class AppUpdater implements AutoCloseable {
         if(expected==null||actual==null||expected.length!=1||actual.length!=1||!expected[0].equals(actual[0]))throw new SecurityException("Signing key mismatch");
     }
     @SuppressWarnings("deprecation") private Signature[] signers(PackageInfo info){return Build.VERSION.SDK_INT>=28?(info.signingInfo==null?null:info.signingInfo.getApkContentsSigners()):info.signatures;}
-    private void ready(){replace("Ready to install CCTV "+release.name,"Download verified.\n\nYour locations and camera order stay saved. Select Install, then confirm on Android’s installer.","Install",this::install,false);}
+    private void ready(){replace(text(R.string.common_update_ready_title,release.name),text(R.string.common_update_ready),text(R.string.common_update_install),this::install,false);}
     @SuppressWarnings("deprecation") private void install(){
         try{
             File apk=UpdateApkProvider.apk(activity);verify(apk,release);
             if(!activity.getPackageManager().canRequestPackageInstalls()){
-                replace("Allow CCTV updates","Android needs permission to install this update. Choose Allow from this source, then press Back to return here.","Open Android settings",()->{
+                replace(text(R.string.common_update_permission_title),text(R.string.common_update_permission),text(R.string.common_update_settings),()->{
                     awaitingPermission=true;
                     try{activity.startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:"+activity.getPackageName())));}
-                    catch(Exception e){awaitingPermission=false;error("This TV does not expose the installation permission screen. Enable installation for CCTV in Android settings, then retry.",this::install);}
+                    catch(Exception e){awaitingPermission=false;error(text(R.string.common_update_permission_error),this::install);}
                 },false);return;
             }
             Uri uri=Uri.parse("content://"+activity.getPackageName()+".updates/cctv-update.apk");
             Intent intent=new Intent(Intent.ACTION_INSTALL_PACKAGE).setDataAndType(uri,"application/vnd.android.package-archive")
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            intent.setClipData(ClipData.newRawUri("CCTV update",uri));
+            intent.setClipData(ClipData.newRawUri(text(R.string.common_update_title),uri));
             activity.startActivity(intent);
-        }catch(Exception e){error("Android could not open this update. Try downloading it again.",this::download);}
+        }catch(Exception e){error(text(R.string.common_update_install_error),this::download);}
     }
     public void saveState(Bundle state) {
         if(release==null || !UpdateApkProvider.apk(activity).isFile())return;
@@ -151,7 +152,7 @@ public final class AppUpdater implements AutoCloseable {
     public void resume(){
         if(!awaitingPermission || release==null)return;
         awaitingPermission=false;cancelWork();long token=generation;Release target=release;
-        replace("CCTV updates",current()+"\n\nVerifying downloaded update…",null,null,true);
+        replace(text(R.string.common_update_title),current()+"\n\n"+text(R.string.common_update_verifying),null,null,true);
         WORKER.execute(()->{try{
             File apk=UpdateApkProvider.apk(activity);
             try(java.io.InputStream in=new java.io.FileInputStream(apk)) {
@@ -159,7 +160,7 @@ public final class AppUpdater implements AutoCloseable {
                         target.size,target.hash,new java.util.concurrent.atomic.AtomicBoolean(),p->{});
             }
             verify(apk,target);post(token,this::ready);
-        }catch(Exception e){post(token,()->error("The saved download is no longer available. Download it again.",this::check));}});
+        }catch(Exception e){post(token,()->error(text(R.string.common_update_saved_error),this::check));}});
     }
     public void stop(){cancelWork();if(dialog!=null){dialog.setOnDismissListener(null);dialog.dismiss();dialog=null;}}
     @Override public void close(){stop();closed=true;handler.removeCallbacksAndMessages(null);}

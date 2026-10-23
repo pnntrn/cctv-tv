@@ -4,32 +4,40 @@ A lightweight native Android TV / Google TV RTSP viewer for Android 8.0+. Direct
 
 ## Download
 
-[Download the signed 0.3.1 release candidate APK](https://github.com/pnntrn/cctv-apk/releases/download/v0.3.1-rc.1/cctv-release.apk) · [Release notes and checksums](https://github.com/pnntrn/cctv-apk/releases)
+[Download the signed 0.4.0 release candidate APK](https://github.com/pnntrn/cctv-apk/releases/download/v0.4.0-rc.1/cctv-release.apk) · [Release notes and checksums](https://github.com/pnntrn/cctv-apk/releases)
 
 Download `cctv-release.apk` on your Android TV or transfer it to the TV, then open it to install. Updates signed with the retained release key preserve saved profiles. Android 8.0 or later is required.
 
-Version 0.3.1 adds H.264 streams with missing SDP codec metadata and recorder draft recovery. Android 9 synthetic playback and navigation tests cover these changes; actual Hikvision playback and update/profile preservation on the owner's Mi Box still need device verification.
+Version 0.4.0 adds Thai controls, an edge-to-edge camera grid with controls hidden when idle, and separate technician setup. It also includes H.264 streams with missing SDP codec metadata and recorder draft recovery. Actual Hikvision playback and update/profile preservation on the owner's Mi Box still need device verification.
 
 ## Viewing
 
-- Multiple locations; 1, 4, 9 or 16 live substreams per page; up to 256 saved cameras per location.
+- The app opens the last location's edge-to-edge camera grid. After four seconds without remote input, controls, camera labels and selection borders hide. Playback errors remain visible.
+- Multiple locations; 1, 4, 9 or 16 live substreams per page; up to 256 saved cameras per location. Use the D-pad at left/right grid edges to reach the previous/next page.
 - D-pad highlights a tile. **OK** opens the mainstream. **Back** restores the substream grid and focused camera.
 - Left/right changes fullscreen camera. OK toggles main/substream. Mainstream failure automatically falls back once to the substream.
 - Fullscreen labels hide after four seconds; remote input reveals them again. Playback errors remain visible.
 - The last location, camera and grid page are remembered after a normal close / reopen.
-- **Arrange → OK to pick up → arrows → OK to drop → Save order**. Back cancels arrangement. Settings also has a direct numbered move action.
+- A short **Menu** press opens viewing options for the grid, grid size and existing locations. Holding OK never opens editing controls.
+- Hold **Menu for three seconds**, then confirm **เข้าสู่การตั้งค่า**, to enter technician setup. Reorder cameras there with the up/down actions or a numbered move. Returning to viewing or backgrounding ends technician access.
 - Only the current page plays. Fullscreen releases all grid decoders. Settings, arrangement and backgrounding release playback. Audio is disabled in this version.
-- Focus rings, 48dp controls, more TV-safe spacing, a compact live header and a native CCTV wordmark/icon.
+- Controls use Thai labels, visible remote focus and 48dp targets. The idle viewing grid has no decorative gaps or borders. Video keeps its original aspect ratio.
+
+### วิธีใช้งาน
+
+เปิดแอปเพื่อดูตารางกล้องเต็มจอ กดลูกศรเพื่อเลือกกล้อง แล้วกด **OK** เพื่อดูเต็มจอ กด **ย้อนกลับ** เพื่อกลับตาราง เมนูและกรอบเลือกจะหายไปเมื่อไม่กดรีโมต 4 วินาที
+
+กด **Menu** สั้น ๆ เพื่อเปลี่ยนรูปแบบตารางหรือสถานที่ สำหรับช่าง ให้กด **Menu ค้าง 3 วินาที** แล้วเลือก **เข้าสู่การตั้งค่า** เพื่อเพิ่ม แก้ไข หรือลบข้อมูล หน้าดูกล้องปกติไม่มีปุ่มแก้ไขข้อมูล
 
 Sixteen streams requires enough hardware decoders. Start with four tiles on smaller sticks. Suggested initial substream encoding: H.264, roughly 640×360 or 640×480, 5–10 fps and 256–512 kbps; tune the NVR itself. No measured stream-count or latency guarantee is made.
 
 ## Setup and recorder editing
 
-1. Create a location, such as **Shop**.
-2. Open **Settings → + Add** and choose Hikvision NVR, VIGI NVR, VIGI standalone camera, or Custom RTSP.
+1. Hold **Menu for three seconds**, confirm technician setup, and create a location, such as **Shop**.
+2. Choose **เพิ่มเครื่องบันทึก**. One NVR is the primary setup for each location; an existing recorder gets **แก้ไขเครื่องบันทึก** instead. Additional NVRs and standalone/custom cameras are available under **ขั้นสูง**.
 3. Enter the recorder address, RTSP port, credentials and channel range.
 4. **Test & save** previews the first substream on the TV. **Save channels** becomes available after a decoded video frame.
-5. Use **Settings → Recorders** to edit an entire recorder's IP, port, credentials and channel range. Existing linked camera IDs, names and order stay intact. Channels outside a changed range are removed; new channels are appended.
+5. Use **แก้ไขเครื่องบันทึก** to edit the location's primary NVR, or **ขั้นสูง → เครื่องบันทึกทั้งหมด** for additional recorders. Existing linked camera IDs, names and order stay intact. Channels outside a changed range are removed; new channels are appended.
 
 Canonical preset URLs from the original app are linked to shared recorder settings when the old profile file is loaded. Other URLs stay standalone. Editing a camera's URLs directly makes it standalone, so later recorder edits do not overwrite the custom URLs. Standalone camera forms include a test preview and an explicit show/hide URLs control.
 
@@ -44,7 +52,7 @@ VIGI NVR RTSP requires compatible firmware and an enabled server. Camera paths `
 
 ## Set up from your phone
 
-1. On the TV open **Settings → Set up from phone**.
+1. Enter technician setup, then choose **ขั้นสูง → ตั้งค่าผ่านโทรศัพท์**.
 2. On a phone on the same trusted LAN/Wi-Fi, open the address shown on the TV.
 3. Enter the six-digit pairing code. One phone is allowed per session; five failed PIN attempts close access. The session expires after ten minutes, closes when the TV dialog closes, and stops when the app backgrounds.
 4. Add or edit a recorder or standalone camera. Blank saved passwords/URLs keep their existing values; saved passwords and RTSP URLs are never sent back to the phone.
@@ -79,6 +87,8 @@ These are native emulator screenshots using deliberately offline fixture cameras
 
 ![Live camera grid](docs/screenshots/grid.png)
 
+![Borderless idle grid with offline fixture errors](docs/screenshots/idle.png)
+
 ![Recorder settings](docs/screenshots/recorder.png)
 
 ## Validation
@@ -89,6 +99,7 @@ These are native emulator screenshots using deliberately offline fixture cameras
 - [Verified build and emulator run](https://github.com/pnntrn/cctv-apk/actions/runs/39948381626) passed for application commit `85cbc4a9987cefd1324e5c8f1cc38a85da0faa2e`.
 - `bash scripts/check-digest.sh` additionally checks MD5 Digest authentication with and without qop, including reserved credential/path characters.
 - A physical TV stick and reachable NVR are still needed to verify real-camera compatibility, Wi-Fi behavior and decoder capacity.
+- [0.4.0 validation](docs/validation-0.4.0.md) records the 24 unit methods, ten native methods, lint/build results and the remaining physical-device checks.
 
 Toolchain: JDK 17, Gradle 8.11.1, AGP 8.9.2, SDK 35, Media3 1.8.0. There is no Gradle wrapper binary; CI installs the pinned Gradle distribution. Local commands: `gradle testDebugUnitTest lintDebug assembleDebug assembleRelease`.
 
@@ -100,7 +111,7 @@ The CCTV camera-grid mark, CCTV wordmark, TV banner and adaptive launcher icon a
 
 ## In-app updates (0.3)
 
-Open **Settings → Check for updates**. On the welcome screen, choose Settings then Check for updates. The app checks the public APK-only feed in [pnntrn/cctv-updates](https://github.com/pnntrn/cctv-updates). Download, then select Install; Android may first ask you to allow installations from CCTV. Press Back after enabling it, then select Install again. Installation needs Android confirmation.
+Enter technician setup and choose **ตรวจสอบอัปเดต**. The app checks the public APK-only feed in [pnntrn/cctv-updates](https://github.com/pnntrn/cctv-updates). This legacy feed remains separate from the release candidate download above. Download, then select Install; Android may first ask you to allow installations from CCTV. Press Back after enabling it, then select Install again. Installation needs Android confirmation.
 
 Updates keep encrypted profiles when the existing installation uses the retained release key. Old debug builds require a one-time switch to the signed release. The updater rejects a different package, signing key, older/equal version, incompatible Android version, incorrect size or SHA-256. Every request and redirect uses HTTPS. Downloads run only while CCTV is visible and stop on Back/cancel/background; no scheduled checks, storage permission, or account tokens.
 

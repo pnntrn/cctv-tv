@@ -80,7 +80,7 @@ public final class PhoneSetupServer implements AutoCloseable {
         JSONObject input = new JSONObject(new String(body, StandardCharsets.UTF_8));
         if (path.equals("/api/pair")) {
             String token = session.pair(input.optString("pin"), peer, now());
-            if (token == null) { respond(out, 403, "{\"message\":\"PIN rejected or session closed\"}", ""); return; }
+            if (token == null) { respond(out, 403, "{\"message\":\"รหัสจับคู่ไม่ถูกต้องหรือการจับคู่สิ้นสุดแล้ว\"}", ""); return; }
             respond(out, 200, "{}", "Set-Cookie: cctv=" + token + "; HttpOnly; SameSite=Strict; Path=/; Max-Age=600\r\n"); return;
         }
         if (!active.get() || !session.authorized(cookie, peer, now())) { respond(out, 403, "{}", ""); return; }
@@ -92,7 +92,7 @@ public final class PhoneSetupServer implements AutoCloseable {
                         ? ProfileStore.nvrFromJson(draft.getJSONObject("nvr")).url(draft.getJSONObject("nvr").getInt("first"), false)
                         : draft.getString("sub");
                 RtspProbe.Result result = RtspProbe.test(url);
-                JSONObject response = new JSONObject().put("okay", result.okay).put("message", result.message);
+                JSONObject response = new JSONObject().put("okay", result.okay).put("message", probeMessage(result.message));
                 if (result.okay && active.get() && session.authorized(cookie, peer, now())) {
                     pending = draft; proof = UUID.randomUUID().toString(); response.put("proof", proof);
                 }
@@ -101,11 +101,38 @@ public final class PhoneSetupServer implements AutoCloseable {
                 if (pending == null || !Objects.equals(proof, input.optString("proof"))) throw new IllegalArgumentException("Test this configuration before saving");
                 JSONObject draft = pending; pending = null; proof = null;
                 if (!active.get() || session.expired(now())) throw new IllegalArgumentException("Pairing session ended");
-                respond(out, 200, handler.handle("save", draft).toString(), "");
+                respond(out, 200, handler.handle("save", draft)
+                        .put("message", "บันทึกบนทีวีแล้ว ปิดการจับคู่เพื่อเริ่มดูภาพได้").toString(), "");
             } else respond(out, 404, "{}", "");
         } catch (Exception e) {
             // Intentionally generic; exception messages can contain credentials.
-            respond(out, 400, "{\"message\":\"Check the fields and channel range, or reopen pairing on the TV\"}", "");
+            respond(out, 400, "{\"message\":\"ตรวจสอบข้อมูลและช่วงช่องกล้อง หรือเปิดจับคู่บนทีวีอีกครั้ง\"}", "");
+        }
+    }
+    /** Pure Java boundary: allowlist messages without ever reflecting private diagnostics. */
+    static String probeMessage(String message) {
+        if (message == null) return "ทดสอบไม่สำเร็จ ตรวจสอบการตั้งค่ากล้อง";
+        for (PlaybackFailure failure : PlaybackFailure.values()) {
+            if (!failure.message.equals(message)) continue;
+            switch (failure) {
+                case AUTH: return "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง";
+                case PATH: return "ไม่พบสตรีมหรือช่องกล้อง";
+                case NETWORK: return "เชื่อมต่อกล้องไม่ได้ ตรวจสอบ IP พอร์ต และเครือข่าย";
+                case TIMEOUT: return "รอภาพนานเกินไป ตรวจสอบเครือข่ายและกล้อง";
+                case STREAM_METADATA: return "ข้อมูลสตรีม RTSP ไม่รองรับ ตรวจสอบสตรีมและเฟิร์มแวร์ NVR";
+                case DECODER: return "ถอดรหัสภาพไม่ได้ ตรวจสอบรูปแบบวิดีโอ";
+                default: return "เปิดภาพไม่ได้ ตรวจสอบการตั้งค่ากล้อง";
+            }
+        }
+        switch (message) {
+            case "RTSP authentication method is unsupported":
+            case "RTSP authentication algorithm is unsupported": return "ไม่รองรับวิธียืนยันตัวตน RTSP นี้";
+            case "Video stream found • verify picture on the TV": return "พบสตรีมภาพแล้ว ตรวจสอบภาพบนทีวี";
+            case "No video track found at this stream path": return "ไม่พบภาพใน URL สตรีมนี้";
+            default:
+                if (message.matches("Camera rejected the stream request \\(RTSP [0-9]{3}\\)"))
+                    return "กล้องปฏิเสธคำขอสตรีม ตรวจสอบการตั้งค่ากล้อง";
+                return "ทดสอบไม่สำเร็จ ตรวจสอบการตั้งค่ากล้อง";
         }
     }
     private static void respond(OutputStream out, int code, String body, String extra) throws IOException { respond(out, code, body, extra, "application/json"); }
