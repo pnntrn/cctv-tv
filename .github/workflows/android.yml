@@ -116,9 +116,10 @@ jobs:
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 28
+          profile: tv_1080p
           target: default
           arch: x86_64
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -skin 1920x1080 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: bash scripts/ui-smoke.sh
       - uses: actions/upload-artifact@v4

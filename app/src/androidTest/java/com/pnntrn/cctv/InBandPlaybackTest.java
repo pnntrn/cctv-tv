@@ -30,9 +30,10 @@ import static org.junit.Assert.*;
 @UnstableApi
 @RunWith(AndroidJUnit4.class)
 public final class InBandPlaybackTest {
-    @Test public void outOfBandControlDecodesTheSameSyntheticVideo() throws Exception { play(true); }
-    @Test public void missingFmtpDecodesFirstFrameFromInterleavedInBandH264() throws Exception { play(false); }
-    private void play(boolean withFmtp) throws Exception {
+    @Test public void outOfBandControlDecodesTheSameSyntheticVideo() throws Exception { play(true,false); }
+    @Test public void missingFmtpDecodesFirstFrameFromInterleavedInBandH264() throws Exception { play(false,false); }
+    @Test public void missingFmtpFullscreenDecodesAndReleases() throws Exception { play(false,true); }
+    private void play(boolean withFmtp, boolean fullscreen) throws Exception {
         // Fail before launching: MainActivity automatically starts saved cameras. Use a clean
         // instrumentation install; never overwrite profiles or contact a configured camera.
         assertTrue("Run on a clean test install with no saved locations",
@@ -47,7 +48,7 @@ public final class InBandPlaybackTest {
             while ((n = in.read(buffer)) != -1) bytes.write(buffer, 0, n);
             fixture = bytes.toByteArray();
         }
-        CountDownLatch firstFrame = new CountDownLatch(1);
+        CountDownLatch firstFrame = new CountDownLatch(1), surfaceReady = new CountDownLatch(1);
         AtomicReference<PlaybackFailure> failure = new AtomicReference<>();
         AtomicReference<String> diagnostics = new AtomicReference<>("no failure callback");
         AtomicReference<StreamTile> tile = new AtomicReference<>();
@@ -58,8 +59,14 @@ public final class InBandPlaybackTest {
                     activity.setContentView(content);
                     StreamTile stream = new StreamTile(activity,
                             new Camera("Synthetic in-band fixture", server.url(), server.url()),
-                            true, true);
+                            fullscreen, true);
                     tile.set(stream);
+                    android.view.SurfaceView videoSurface=(android.view.SurfaceView)stream.getChildAt(0);
+                    videoSurface.getHolder().addCallback(new android.view.SurfaceHolder.Callback(){
+                        public void surfaceCreated(android.view.SurfaceHolder holder){if(holder.getSurface().isValid())surfaceReady.countDown();}
+                        public void surfaceChanged(android.view.SurfaceHolder holder,int format,int width,int height){if(holder.getSurface().isValid())surfaceReady.countDown();}
+                        public void surfaceDestroyed(android.view.SurfaceHolder holder){}
+                    });
                     stream.setAutoRetry(false);
                     stream.setListener(new StreamTile.Listener() {
                         @Override public void onFirstFrame() { firstFrame.countDown(); }
@@ -68,10 +75,15 @@ public final class InBandPlaybackTest {
                             try {
                                 java.lang.reflect.Field field=StreamTile.class.getDeclaredField("player");field.setAccessible(true);
                                 androidx.media3.exoplayer.ExoPlayer p=(androidx.media3.exoplayer.ExoPlayer)field.get(stream);
+                                StringBuilder counts=new StringBuilder();Object counters=p.getVideoDecoderCounters();
+                                if(counters!=null)for(java.lang.reflect.Field counter:counters.getClass().getFields())
+                                    if(counter.getType()==int.class)counts.append(counter.getName()).append('=').append(counter.getInt(counters)).append(',');
                                 diagnostics.set("state="+p.getPlaybackState()+",buffered="+p.getBufferedPosition()
                                     +",position="+p.getCurrentPosition()+",groups="+p.getCurrentTracks().getGroups().size()
                                     +",videoSelected="+p.getCurrentTracks().isTypeSelected(androidx.media3.common.C.TRACK_TYPE_VIDEO)
-                                    +",format="+p.getVideoFormat()+",shown="+stream.isShown()+",size="+stream.getWidth()+"x"+stream.getHeight());
+                                    +",format="+p.getVideoFormat()+",shown="+stream.isShown()+",size="+stream.getWidth()+"x"+stream.getHeight()
+                                    +",surfaceValid="+videoSurface.getHolder().getSurface().isValid()+",window="+stream.getWindowVisibility()
+                                    +",focus="+stream.hasWindowFocus()+",counters="+counts);
                             }catch(Exception e){diagnostics.set(e.getClass().getSimpleName());}
                         }
                     });
@@ -79,9 +91,11 @@ public final class InBandPlaybackTest {
                         @Override public void onViewAttachedToWindow(View view) { }
                         @Override public void onViewDetachedFromWindow(View view) { stream.release(); }
                     });
-                    content.addView(stream, new FrameLayout.LayoutParams(-1, -1));
+                    content.addView(stream, new FrameLayout.LayoutParams(-1,
+                            fullscreen ? -1 : Math.round(220*activity.getResources().getDisplayMetrics().density)));
                     stream.start(0);
                 });
+                assertTrue("Native video Surface must be created on the physical TV display",surfaceReady.await(5,TimeUnit.SECONDS));
                 // Only ExoPlayer's rendered-first-frame callback can satisfy this latch.
                 // OPTIONS, DESCRIBE, SETUP and PLAY responses alone must never pass the test.
                 boolean rendered = firstFrame.await(30, TimeUnit.SECONDS);
@@ -92,6 +106,9 @@ public final class InBandPlaybackTest {
                 assertNull("Loopback server failed", server.failure.get());
                 assertTrue("Expected single-NAL RTP packets", server.singleNalPackets > 0);
                 assertTrue("Expected fragmented FU-A RTP packets", server.fuPackets > 0);
+                InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> tile.get().release());
+                server.control.join(2000);
+                assertFalse("Releasing the tile must close its live RTSP connection",server.control.isAlive());
             } finally {
                 // Also runs if launch/onActivity/assertion/ActivityScenario.close throws.
                 InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {

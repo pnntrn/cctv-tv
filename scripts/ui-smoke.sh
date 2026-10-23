@@ -3,8 +3,16 @@ set -euo pipefail
 # Fixture reset is permitted only on an emulator, never on an owner’s TV.
 case "$(adb get-serialno)" in emulator-*) ;; *) echo 'Native fixtures require an emulator'; exit 1;; esac
 mkdir -p ui-results
-adb shell wm size 1920x1080
-adb shell wm density 320
+adb shell wm size reset
+adb shell wm density reset
+adb shell wm size | tee ui-results/display.txt
+adb shell wm density | tee -a ui-results/display.txt
+python3 - <<'DISPLAY'
+from pathlib import Path
+assert 'Physical size: 1920x1080' in Path('ui-results/display.txt').read_text(), 'Use the tv_1080p AVD profile'
+DISPLAY
+adb shell input keyevent KEYCODE_WAKEUP
+adb shell wm dismiss-keyguard
 adb install -r "$(find test-apks -name app-debug.apk -print -quit)"
 adb install -r "$(find test-apks -name app-debug-androidTest.apk -print -quit)"
 : > ui-results/instrumentation.txt
@@ -20,10 +28,13 @@ done
 # Instrumentation may exit zero even when assertions fail.
 python3 - <<'PYCODE'
 from pathlib import Path
-import re
+import re, struct
 for p in Path('ui-results').glob('*.png'):
-    if not p.read_bytes().startswith(b'\x89PNG\r\n\x1a\n'):
+    data=p.read_bytes()
+    if not data.startswith(b'\x89PNG\r\n\x1a\n'):
         p.unlink()
+    else:
+        assert struct.unpack('>II',data[16:24]) == (1920,1080), 'Native UI screenshots must use physical TV geometry'
 output=Path('ui-results/instrumentation.txt').read_text()
 assert len(re.findall(r'OK \([0-9]+ tests?\)',output)) == 3, 'Android instrumentation assertions failed'
 PYCODE
