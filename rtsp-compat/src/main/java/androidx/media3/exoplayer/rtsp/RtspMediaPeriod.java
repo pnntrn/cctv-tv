@@ -483,6 +483,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
   }
 
   private void maybeSetupTracks() {
+    if (released) return;
     boolean transportReady = true;
     for (int i = 0; i < selectedLoadInfos.size(); i++) {
       transportReady &= selectedLoadInfos.get(i).isTransportReady();

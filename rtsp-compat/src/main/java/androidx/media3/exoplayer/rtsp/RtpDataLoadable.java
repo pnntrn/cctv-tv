@@ -153,15 +153,16 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
         dataChannel = rtpDataChannelFactory.createAndOpenDataChannel(trackId);
         String transport = dataChannel.getTransport();
 
-        RtpDataChannel finalDataChannel = dataChannel;
-        playbackThreadHandler.post(
-            () -> eventListener.onTransportReady(transport, finalDataChannel));
-
         extractorInput =
             new DefaultExtractorInput(
                 checkNotNull(dataChannel), /* position= */ 0, /* length= */ C.LENGTH_UNSET);
         extractor = new RtpExtractor(rtspMediaTrack.payloadFormat, trackId);
         extractor.init(output);
+        // In-band preparation can SETUP/PLAY immediately. Publish readiness only after the
+        // reader exists and initialization is complete, before accepting RTP-Info callbacks.
+        RtpDataChannel finalDataChannel = dataChannel;
+        playbackThreadHandler.post(
+            () -> eventListener.onTransportReady(transport, finalDataChannel));
       }
 
       while (!loadCancelled) {

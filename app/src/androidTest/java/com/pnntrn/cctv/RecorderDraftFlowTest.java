@@ -113,8 +113,12 @@ public class RecorderDraftFlowTest {
                 AlertDialog preview=(AlertDialog)get(a,"connectionPreview"); assertNotNull(preview);
                 assertFalse(preview.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled());
                 ArrayList<?> streams=(ArrayList<?>)get(a,"streams");
-                callback[0]=(StreamTile.Listener)get(streams.get(streams.size()-1),"listener");
-                // Exercise the decoded-frame callback contract, without a real camera or credentials.
+                StreamTile fixture=(StreamTile)streams.get(streams.size()-1);
+                callback[0]=(StreamTile.Listener)get(fixture,"listener");
+                // This is the UI callback contract test, not a decode/network test. Cancel the
+                // intentionally invalid transport before injecting callbacks to avoid port-9 races.
+                fixture.release();
+                // Actual first-frame decoding is covered separately by InBandPlaybackTest.
                 callback[0].onFirstFrame();
             }catch(Exception e){throw new AssertionError(e);}});
             InstrumentationRegistry.getInstrumentation().waitForIdleSync();
@@ -137,6 +141,8 @@ public class RecorderDraftFlowTest {
                 assertEquals("Retained editor",field(a,"Recorder name").getText().toString());
                 field(a,"Password").setText("temporary-fixture");
                 ((AlertDialog)get(a,"recorderEditor")).getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+                ArrayList<?> streams=(ArrayList<?>)get(a,"streams");
+                ((StreamTile)streams.get(streams.size()-1)).release();
             }catch(Exception e){throw new AssertionError(e);}});
             scenario.moveToState(Lifecycle.State.CREATED); scenario.moveToState(Lifecycle.State.RESUMED);
             callback[0].onFirstFrame(); InstrumentationRegistry.getInstrumentation().waitForIdleSync();
