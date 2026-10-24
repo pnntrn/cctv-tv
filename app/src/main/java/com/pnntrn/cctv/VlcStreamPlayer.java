@@ -28,7 +28,8 @@ final class VlcStreamPlayer {
 
     private static final String STATS_TAG = "CCTVPlayback";
     private static final long STATS_INTERVAL_MS = 250;
-    private static final int NETWORK_CACHE_MS = 500;
+    // Match the SDK's hardware-decoder preroll default for high-resolution live streams.
+    private static final int NETWORK_CACHE_MS = 1500;
     private static final Object SHARED_LIBVLC_LOCK = new Object();
     @Nullable private static LibVLC sharedLibVlc;
     private static int sharedLibVlcReferences;

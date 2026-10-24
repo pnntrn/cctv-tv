@@ -93,6 +93,46 @@ public final class InBandPlaybackTest {
     @Test public void missingFmtpHevcFullscreenDecodesAndReleases() throws Exception { play(false, true, true); }
     @Test public void vlcH264MainstreamWithFmtpDecodesAndClosesConnection() throws Exception { play(true, true, false); }
     @Test public void vlcHevcMainstreamWithFmtpDecodesAndClosesConnection() throws Exception { play(true, true, true); }
+    @Test public void vlcFailedConnectionKeepsCredentialsOutOfUiAndLogs() throws Exception {
+        var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        assertTrue("Use a clean emulator fixture", new ProfileStore(context).load().isEmpty());
+        assertTrue(android.os.Build.FINGERPRINT.contains("generic") || android.os.Build.HARDWARE.contains("ranchu") || android.os.Build.HARDWARE.contains("goldfish"));
+        var device = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        device.executeShellCommand("logcat -c");
+        // Deliberately synthetic credentials, used only against a closed emulator loopback port.
+        String secret = "syntheticCredential9Z";
+        String address = "rtsp://fixture-user:" + secret + "@127.0.0.1:9/unavailable";
+        CountDownLatch failed = new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicBoolean rendered = new java.util.concurrent.atomic.AtomicBoolean();
+        AtomicReference<StreamTile> tile = new AtomicReference<>();
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(activity -> {
+                FrameLayout content = new FrameLayout(activity); activity.setContentView(content);
+                StreamTile stream = new StreamTile(activity, new Camera("Synthetic failure", address, address), true, true);
+                tile.set(stream); stream.setAutoRetry(false);
+                stream.setListener(new StreamTile.Listener() {
+                    @Override public void onFirstFrame() { rendered.set(true); }
+                    @Override public void onFailure(PlaybackFailure reason) { failed.countDown(); }
+                });
+                content.addView(stream, new FrameLayout.LayoutParams(-1, -1)); stream.start(0);
+            });
+            assertTrue("Unreachable MAIN must report failure", failed.await(20, TimeUnit.SECONDS));
+            assertFalse("A connection event must never count as a picture", rendered.get());
+            scenario.onActivity(activity -> {
+                assertFalse(((android.widget.TextView)tile.get().getChildAt(1)).getText().toString().contains(secret));
+                tile.get().release();
+            });
+            String logs = device.executeShellCommand("logcat -d --pid=" + android.os.Process.myPid());
+            assertFalse("Native/player logs must not disclose credentials", logs.contains(secret));
+            java.lang.reflect.Field references = VlcStreamPlayer.class.getDeclaredField("sharedLibVlcReferences");
+            references.setAccessible(true);
+            assertEquals("Failed player must release its shared engine reference", 0, references.getInt(null));
+        } finally {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+                if (tile.get() != null) tile.get().release();
+            });
+        }
+    }
     @Test public void recorderShiftedHevcContinuationHeadersDecodeWithoutFmtp() throws Exception { play(false, false, true, true); }
     @Test public void recorderShiftedHevcContinuationHeadersDecodeWithFmtp() throws Exception { play(true, false, true, true); }
     private void play(boolean withFmtp, boolean fullscreen) throws Exception { play(withFmtp, fullscreen, false); }
