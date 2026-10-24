@@ -91,6 +91,48 @@ public final class InBandPlaybackTest {
     @Test public void hevcOutOfBandControlDecodesTheSameSyntheticVideo() throws Exception { play(true, false, true); }
     @Test public void missingFmtpDecodesFirstFrameFromInterleavedInBandH265() throws Exception { play(false, false, true); }
     @Test public void missingFmtpHevcFullscreenDecodesAndReleases() throws Exception { play(false, true, true); }
+    @Test public void vlcH264MainstreamWithFmtpDecodesAndClosesConnection() throws Exception { play(true, true, false); }
+    @Test public void vlcHevcMainstreamWithFmtpDecodesAndClosesConnection() throws Exception { play(true, true, true); }
+    @Test public void vlcFailedConnectionKeepsCredentialsOutOfUiAndLogs() throws Exception {
+        var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        assertTrue("Use a clean emulator fixture", new ProfileStore(context).load().isEmpty());
+        assertTrue(android.os.Build.FINGERPRINT.contains("generic") || android.os.Build.HARDWARE.contains("ranchu") || android.os.Build.HARDWARE.contains("goldfish"));
+        var device = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        device.executeShellCommand("logcat -c");
+        // Deliberately synthetic credentials, used only against a closed emulator loopback port.
+        String secret = "syntheticCredential9Z";
+        String address = "rtsp://fixture-user:" + secret + "@127.0.0.1:9/unavailable";
+        CountDownLatch failed = new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicBoolean rendered = new java.util.concurrent.atomic.AtomicBoolean();
+        AtomicReference<StreamTile> tile = new AtomicReference<>();
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(activity -> {
+                FrameLayout content = new FrameLayout(activity); activity.setContentView(content);
+                StreamTile stream = new StreamTile(activity, new Camera("Synthetic failure", address, address), true, true);
+                tile.set(stream); stream.setAutoRetry(false);
+                stream.setListener(new StreamTile.Listener() {
+                    @Override public void onFirstFrame() { rendered.set(true); }
+                    @Override public void onFailure(PlaybackFailure reason) { failed.countDown(); }
+                });
+                content.addView(stream, new FrameLayout.LayoutParams(-1, -1)); stream.start(0);
+            });
+            assertTrue("Unreachable MAIN must report failure", failed.await(20, TimeUnit.SECONDS));
+            assertFalse("A connection event must never count as a picture", rendered.get());
+            scenario.onActivity(activity -> {
+                assertFalse(((android.widget.TextView)tile.get().getChildAt(1)).getText().toString().contains(secret));
+                tile.get().release();
+            });
+            String logs = device.executeShellCommand("logcat -d --pid=" + android.os.Process.myPid());
+            assertFalse("Native/player logs must not disclose credentials", logs.contains(secret));
+            java.lang.reflect.Field references = VlcStreamPlayer.class.getDeclaredField("sharedLibVlcReferences");
+            references.setAccessible(true);
+            assertEquals("Failed player must release its shared engine reference", 0, references.getInt(null));
+        } finally {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+                if (tile.get() != null) tile.get().release();
+            });
+        }
+    }
     @Test public void recorderShiftedHevcContinuationHeadersDecodeWithoutFmtp() throws Exception { play(false, false, true, true); }
     @Test public void recorderShiftedHevcContinuationHeadersDecodeWithFmtp() throws Exception { play(true, false, true, true); }
     private void play(boolean withFmtp, boolean fullscreen) throws Exception { play(withFmtp, fullscreen, false); }
@@ -161,16 +203,23 @@ public final class InBandPlaybackTest {
                     stream.start(0);
                 });
                 assertTrue("Native video Surface must be created on the physical TV display",surfaceReady.await(5,TimeUnit.SECONDS));
-                // Only ExoPlayer's rendered-first-frame callback can satisfy this latch.
+                // Only rendered-frame evidence from the selected engine can satisfy this latch.
                 // OPTIONS, DESCRIBE, SETUP and PLAY responses alone must never pass the test.
                 boolean rendered = firstFrame.await(30, TimeUnit.SECONDS);
                 assertTrue("No decoded frame in 30s; fmtp="+withFmtp+"; playback=" + failure.get()
                         + "; server=" + server.failure.get()+"; setup="+server.setupRequests+"; play="+server.playRequests
                         +"; single="+server.singleNalPackets+"; fu="+server.fuPackets+"; "+diagnostics.get(), rendered);
                 assertNull("Playback failed before first frame", failure.get());
+                scenario.onActivity(activity -> { try {
+                    StreamTile active = tile.get();
+                    assertEquals(hevc ? "H.265 / HEVC" : "H.264", active.detectedVideoCodec());
+                    assertEquals("MAIN must use the compatibility engine", fullscreen,
+                            privateField(active, "vlc") != null);
+                } catch (Exception e) { throw new AssertionError(e); } });
                 assertNull("Loopback server failed", server.failure.get());
                 assertTrue("Expected single-NAL RTP packets", server.singleNalPackets > 0);
                 assertTrue("Expected fragmented RTP packets", server.fuPackets > 0);
+                server.expectClientDisconnect = true;
                 InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> tile.get().release());
                 server.control.join(2000);
                 assertFalse("Releasing the tile must close its live RTSP connection",server.control.isAlive());
@@ -253,6 +302,7 @@ public final class InBandPlaybackTest {
             awaitPreviewFocus(scenario, false);
             device.pressDPadRight();
             awaitPreviewFocus(scenario, true);
+            sub.expectClientDisconnect = true;
             device.pressDPadCenter();
             assertTrue("Mainstream must actually decode HEVC", device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.textContains("H.265 / HEVC")), 30000));
             sub.control.join(2000);
@@ -265,6 +315,8 @@ public final class InBandPlaybackTest {
                 assertEquals(1,((ArrayList<?>)privateField(activity,"streams")).size());
             } catch (Exception e) { throw new AssertionError(e); } });
             if (preset == CameraRules.Preset.HIKVISION) { device.waitForIdle(); assertTrue(device.takeScreenshot(new java.io.File(context.getFilesDir(),"ui-codec-main.png"))); }
+            assertNull("MAIN must stay connected before intentional preview close", main.failure.get());
+            main.expectClientDisconnect = true;
             scenario.onActivity(activity -> { try {
                 android.app.AlertDialog dialog = (android.app.AlertDialog)privateField(activity,"connectionPreview");
                 dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
@@ -295,9 +347,12 @@ public final class InBandPlaybackTest {
         private volatile Thread sender;
         private volatile boolean closed;
         private volatile boolean playing;
+        private volatile boolean expectClientDisconnect;
         volatile boolean shiftedHevcFu;
         volatile int singleNalPackets;
         volatile int setupRequests,playRequests;
+        private int videoChannel;
+        private final java.util.Set<Integer> channels = new java.util.HashSet<>();
         volatile int fuPackets;
         private OutputStream output;
         private int sequence = 1000;
@@ -375,13 +430,24 @@ public final class InBandPlaybackTest {
                                     + url() + "\r\n", sdp);
                             break;
                         case "SETUP":
-                            setupRequests++;
-                            if (!transport.contains("RTP/AVP/TCP")
-                                    || !transport.contains("interleaved=0-1")) {
-                                throw new IOException("Expected RTP-over-TCP channels 0-1");
+                            java.util.regex.Matcher pair = java.util.regex.Pattern.compile("(?:^|;)interleaved=(\\d+)-(\\d+)(?:;|$)").matcher(transport);
+                            if (!transport.contains("RTP/AVP/TCP") || !pair.find())
+                                throw new IOException("Expected RTP-over-TCP channel pair");
+                            int rtpChannel = Integer.parseInt(pair.group(1));
+                            int rtcpChannel = Integer.parseInt(pair.group(2));
+                            if (rtpChannel < 0 || rtcpChannel > 255 || rtcpChannel != rtpChannel + 1
+                                    || !channels.add(rtpChannel) || !channels.add(rtcpChannel))
+                                throw new IOException("Invalid or duplicate interleaved channels");
+                            String requestedPath = java.net.URI.create(request.split(" ")[1]).getPath();
+                            if (requestedPath.equals(java.net.URI.create(trackUrl()).getPath())) {
+                                if (++setupRequests != 1) throw new IOException("Unexpected second video SETUP");
+                                videoChannel = rtpChannel;
+                            } else if (!requestedPath.endsWith("/trackID=2") && !requestedPath.endsWith("/track2")
+                                    && !requestedPath.endsWith("/track3")) {
+                                throw new IOException("Unexpected fixture track");
                             }
                             respond(cseq, "Session: fixture;timeout=60\r\n"
-                                    + "Transport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n", "");
+                                    + "Transport: RTP/AVP/TCP;unicast;interleaved=" + rtpChannel + "-" + rtcpChannel + "\r\n", "");
                             break;
                         case "PLAY":
                             playRequests++;
@@ -401,7 +467,8 @@ public final class InBandPlaybackTest {
                     }
                 }
             } catch (IOException | RuntimeException error) {
-                if (!closed) failure.compareAndSet(null, error);
+                if (!closed && !(expectClientDisconnect && error instanceof java.net.SocketException))
+                    failure.compareAndSet(null, error);
             } finally {
                 playing = false;
             }
@@ -460,7 +527,8 @@ public final class InBandPlaybackTest {
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
             } catch (IOException error) {
-                if (!closed && playing) failure.compareAndSet(null, error);
+                if (!closed && playing && !(expectClientDisconnect && error instanceof java.net.SocketException))
+                    failure.compareAndSet(null, error);
             }
         }
 
@@ -474,7 +542,7 @@ public final class InBandPlaybackTest {
             rtp[8] = 0x12; rtp[9] = 0x34; rtp[10] = 0x56; rtp[11] = 0x78;
             System.arraycopy(payload, 0, rtp, 12, payload.length);
             synchronized (outputLock) {
-                output.write(new byte[] {'$', 0, (byte) (rtp.length >> 8), (byte) rtp.length});
+                output.write(new byte[] {'$', (byte)videoChannel, (byte) (rtp.length >> 8), (byte) rtp.length});
                 output.write(rtp);
                 output.flush();
             }

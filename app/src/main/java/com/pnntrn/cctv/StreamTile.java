@@ -42,6 +42,7 @@ public final class StreamTile extends FrameLayout {
     private final boolean tcp;
     private final boolean main;
     private ExoPlayer player;
+    private VlcStreamPlayer vlc;
     private boolean released;
     private int failures;
     private int generation;
@@ -71,6 +72,7 @@ public final class StreamTile extends FrameLayout {
 
     /** Actual decoder format, queried after a rendered frame; never an encoder override. */
     public String detectedVideoCodec() {
+        if (vlc != null) return vlc.detectedVideoCodec();
         androidx.media3.common.Format format = player == null ? null : player.getVideoFormat();
         String mime = format == null ? null : format.sampleMimeType;
         if (androidx.media3.common.MimeTypes.VIDEO_H264.equals(mime)) return "H.264";
@@ -96,6 +98,28 @@ public final class StreamTile extends FrameLayout {
         final int token = ++generation;
         status.setVisibility(VISIBLE); status.setText(R.string.common_connecting);
         try {
+            if (main) {
+                vlc = new VlcStreamPlayer(getContext(), surface, url, new VlcStreamPlayer.Listener() {
+                    private boolean current() { return !released && token == generation && vlc != null; }
+                    @Override public void onFirstFrame() {
+                        if (!current()) return;
+                        failures = 0; status.setVisibility(GONE);
+                        if (listener != null) listener.onFirstFrame();
+                    }
+                    @Override public void onFailure(PlaybackFailure reason) {
+                        if (current()) fail(reason);
+                    }
+                    @Override public void onVideoSize(float value) {
+                        if (current() && Float.isFinite(value) && value > 0) {
+                            aspect = value; requestLayout();
+                        }
+                    }
+                });
+                vlc.setWindowSize(surface.getWidth(), surface.getHeight());
+                vlc.start();
+                handler.postDelayed(() -> watchdog(token), 5000);
+                return;
+            }
             DefaultTrackSelector selector = new DefaultTrackSelector(getContext());
             selector.setParameters(selector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true));
@@ -149,7 +173,8 @@ public final class StreamTile extends FrameLayout {
     private void watchdog(int token) {
         if (released || token != generation) return;
         logPlaybackStats("watchdog");
-        if (SystemClock.elapsedRealtime() - lastFrame > (main ? 12000 : 25000)) { fail(PlaybackFailure.TIMEOUT); return; }
+        long frameTime = vlc == null ? lastFrame : vlc.lastFrameTimeMs();
+        if (SystemClock.elapsedRealtime() - frameTime > (main ? 12000 : 25000)) { fail(PlaybackFailure.TIMEOUT); return; }
         handler.postDelayed(() -> watchdog(token), 5000);
     }
 
@@ -174,11 +199,13 @@ public final class StreamTile extends FrameLayout {
     }
 
     private void releasePlayer() {
+        if (vlc != null) { VlcStreamPlayer previous = vlc; vlc = null; previous.release(); }
         if (player != null) { logPlaybackStats("release"); player.clearVideoSurface(); player.release(); player = null; }
     }
 
     /** Opt-in ADB diagnostics: aggregate counters only, never names, URLs or credentials. */
     private void logPlaybackStats(String event) {
+        if (vlc != null) { vlc.logPlaybackStats(event); return; }
         if (player == null || !android.util.Log.isLoggable(STATS_TAG, android.util.Log.DEBUG)) return;
         androidx.media3.common.Format format = player.getVideoFormat();
         androidx.media3.exoplayer.DecoderCounters counters = player.getVideoDecoderCounters();
@@ -215,5 +242,6 @@ public final class StreamTile extends FrameLayout {
         int vw = w, vh = Math.round(w / aspect);
         if (vh > h) { vh = h; vw = Math.round(h * aspect); }
         surface.layout((w - vw) / 2, (h - vh) / 2, (w + vw) / 2, (h + vh) / 2);
+        if (vlc != null) vlc.setWindowSize(vw, vh);
     }
 }

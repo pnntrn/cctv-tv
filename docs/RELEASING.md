@@ -46,3 +46,12 @@ python3 scripts/publish-update.py path/to/cctv-release.apk --notes "Changes in t
 ```
 
 It publishes the APK, release notes and feed with downloads pinned to an immutable APK commit. The app needs no account token. Keep signing keys private and never attach credentials, real camera footage or private logs to release notes.
+
+
+## Private device evaluation and rollback
+
+The0.4.6 MAIN-engine investigation is not authorized for public tagging/publication yet. A retained-key evaluation APK can be produced with the existing workflow using `workflow_dispatch` and `build_only=true`. This skips duplicate native execution only for that private artifact; the PR and every release tag still require the native TV gate. Run the PR gate on the same source tree and record the device results. Never mark evaluation as a published release.
+
+The ARM32/64 package compresses native libraries and must stay below64MiB for older installed updater versions. Debug retains x86/x86_64 for emulator tests; an ARM APK is not an Intel-TV update. Inspect packaged ABIs and actual file size, not just dependency sizes. Public SDK distribution also requires completed license/source/relink materials; dependency approval does not select the original project's license.
+
+For rollback, retain the last verified source/APK/checksums and the current encrypted-profile installation. Android normally rejects installing an older version code over a newer release; prepare a retained-key build of the verified source with a higher version code, test it and seek distribution approval. Never uninstall or clear data to force rollback. This app has no server database to restore; Keystore-backed profiles may be unrecoverable if the installation/key is removed.
