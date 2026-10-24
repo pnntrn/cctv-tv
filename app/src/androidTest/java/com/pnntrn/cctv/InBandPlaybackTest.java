@@ -138,6 +138,96 @@ public final class InBandPlaybackTest {
     }
     @Test public void recorderShiftedHevcContinuationHeadersDecodeWithoutFmtp() throws Exception { play(false, false, true, true); }
     @Test public void recorderShiftedHevcContinuationHeadersDecodeWithFmtp() throws Exception { play(true, false, true, true); }
+    /** Six 320x180/5fps synthetic decoders prove layout integration, not owner-device HD capacity. */
+    @Test public void sixSubstreamsRenderInOneBigFiveSmallLayout() throws Exception {
+        var instrumentation = InstrumentationRegistry.getInstrumentation();
+        var context = instrumentation.getTargetContext();
+        assertTrue("Only isolated emulator fixtures may run this test", android.os.Build.HARDWARE.contains("ranchu")
+                || android.os.Build.HARDWARE.contains("goldfish"));
+        assertTrue("Never contact or overwrite saved cameras", new ProfileStore(context).load().isEmpty());
+        byte[] video = fixture(false);
+        CountDownLatch firstFrames = new CountDownLatch(6), drawn = new CountDownLatch(1);
+        AtomicReference<String> playbackFailure = new AtomicReference<>();
+        ArrayList<StreamTile> active = new ArrayList<>();
+        try (LoopbackRtspServer one = new LoopbackRtspServer(video, false, false);
+             LoopbackRtspServer two = new LoopbackRtspServer(video, false, false);
+             LoopbackRtspServer three = new LoopbackRtspServer(video, false, false);
+             LoopbackRtspServer four = new LoopbackRtspServer(video, false, false);
+             LoopbackRtspServer five = new LoopbackRtspServer(video, false, false);
+             LoopbackRtspServer six = new LoopbackRtspServer(video, false, false)) {
+            List<LoopbackRtspServer> servers = Arrays.asList(one, two, three, four, five, six);
+            try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+                try {
+                    scenario.onActivity(activity -> { try {
+                        Location location = new Location("Synthetic six live substreams"); location.grid = 6;
+                        for (int i = 0; i < servers.size(); i++)
+                            location.cameras.add(new Camera("Synthetic SUB " + (i + 1), servers.get(i).url(), "invalid-unused-main-" + i));
+                        java.lang.reflect.Field current = MainActivity.class.getDeclaredField("current");
+                        current.setAccessible(true); current.set(activity, location);
+                        java.lang.reflect.Method render = MainActivity.class.getDeclaredMethod("render");
+                        render.setAccessible(true); render.invoke(activity);
+                        for (Object stream : (ArrayList<?>)privateField(activity, "streams")) active.add((StreamTile)stream);
+                        assertEquals("Six visible cameras require six active tiles", 6, active.size());
+                        // render() only posts starts; this main-thread callback attaches listeners first.
+                        for (int i = 0; i < active.size(); i++) {
+                            final int index = i;
+                            StreamTile stream = active.get(i); stream.setAutoRetry(false);
+                            stream.setListener(new StreamTile.Listener() {
+                                private boolean rendered;
+                                @Override public void onFirstFrame() {
+                                    if (!rendered) { rendered = true; firstFrames.countDown(); }
+                                }
+                                @Override public void onFailure(PlaybackFailure reason) {
+                                    playbackFailure.compareAndSet(null, "tile=" + index + ",reason=" + reason);
+                                }
+                            });
+                        }
+                    } catch (Exception e) { throw new AssertionError(e); } });
+                    boolean rendered = firstFrames.await(30, TimeUnit.SECONDS);
+                    assertTrue("All six SUB decoders must render actual first frames; remaining=" + firstFrames.getCount()
+                            + ",failure=" + playbackFailure.get(), rendered);
+                    assertNull("A visible decoder failed", playbackFailure.get());
+                    scenario.onActivity(activity -> { try {
+                        ArrayList<?> cells = (ArrayList<?>)privateField(activity, "tileViews");
+                        assertEquals(6, cells.size());
+                        View big = (View)cells.get(0), small = (View)cells.get(1);
+                        assertEquals("First tile spans two columns", small.getWidth() * 2, big.getWidth(), 2);
+                        assertEquals("First tile spans two rows", small.getHeight() * 2, big.getHeight(), 2);
+                        for (int i = 0; i < active.size(); i++) {
+                            StreamTile stream = active.get(i);
+                            assertEquals("Each tile must decode SUB through Media3", "H.264", stream.detectedVideoCodec());
+                            assertNotNull(privateField(stream, "player"));
+                            assertEquals(servers.get(i).url(), privateField(stream, "url"));
+                            android.view.SurfaceView surface = (android.view.SurfaceView)stream.getChildAt(0);
+                            assertTrue("Decoded video must have a visible native Surface", surface.isShown() && surface.getHolder().getSurface().isValid());
+                        }
+                        View decor = activity.getWindow().getDecorView();
+                        decor.postOnAnimation(() -> decor.postOnAnimation(drawn::countDown));
+                    } catch (Exception e) { throw new AssertionError(e); } });
+                    assertTrue("The composed grid must draw before capture", drawn.await(5, TimeUnit.SECONDS));
+                    var device = androidx.test.uiautomator.UiDevice.getInstance(instrumentation);
+                    assertTrue(device.takeScreenshot(new java.io.File(context.getFilesDir(), "ui-six-live.png")));
+                    for (LoopbackRtspServer server : servers) {
+                        assertEquals("Every SUB endpoint must be contacted exactly once", 1, server.acceptedConnections);
+                        assertEquals(1, server.setupRequests); assertEquals(1, server.playRequests);
+                        assertTrue("All six SUB connections must remain live for capture", server.control.isAlive() && server.playing);
+                        assertNull("Synthetic server failed while playing", server.failure.get());
+                        server.expectClientDisconnect = true;
+                    }
+                    scenario.onActivity(activity -> { for (StreamTile stream : active) stream.release(); });
+                    for (LoopbackRtspServer server : servers) {
+                        server.control.join(2000);
+                        assertFalse("Closing six-camera view must release every RTSP connection", server.control.isAlive());
+                        assertNull("Release must not hide unexpected server failures", server.failure.get());
+                    }
+                } finally {
+                    for (LoopbackRtspServer server : servers) server.expectClientDisconnect = true;
+                    scenario.onActivity(activity -> { for (StreamTile stream : active) stream.release(); });
+                }
+            }
+        }
+        assertTrue("Synthetic viewing must leave saved profiles empty", new ProfileStore(context).load().isEmpty());
+    }
     private void play(boolean withFmtp, boolean fullscreen) throws Exception { play(withFmtp, fullscreen, false); }
     private void play(boolean withFmtp, boolean fullscreen, boolean hevc) throws Exception {
         play(withFmtp, fullscreen, hevc, false);
