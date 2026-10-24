@@ -51,11 +51,6 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
   /** Fragmentation Unit. RFC7798 Section 4.4.3. */
   private static final int RTP_PACKET_TYPE_FU = 49;
 
-  /** IDR NAL unit types. */
-  private static final int NAL_IDR_W_RADL = 19;
-
-  private static final int NAL_IDR_N_LP = 20;
-
   /** Scratch for Fragmentation Unit RTP packets. */
   private final ParsableByteArray fuScratchBuffer;
 
@@ -69,6 +64,7 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
 
   /** The combined size of a sample that is fragmented into multiple RTP packets. */
   private int fragmentedSampleSizeBytes;
+  private @C.BufferFlags int fragmentedNalFlags;
 
   private long startTimeOffsetUs;
 
@@ -123,6 +119,8 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
       trackOutput.sampleMetadata(
           timeUs, bufferFlags, fragmentedSampleSizeBytes, /* offset= */ 0, /* cryptoData= */ null);
       fragmentedSampleSizeBytes = 0;
+      bufferFlags = 0;
+      fragmentedNalFlags = 0;
     }
 
     previousSequenceNumber = sequenceNumber;
@@ -132,6 +130,8 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
   public void seek(long nextRtpTimestamp, long timeUs) {
     firstReceivedTimestamp = nextRtpTimestamp;
     fragmentedSampleSizeBytes = 0;
+    bufferFlags = 0;
+    fragmentedNalFlags = 0;
     startTimeOffsetUs = timeUs;
   }
 
@@ -164,7 +164,7 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     fragmentedSampleSizeBytes += numBytesInData;
 
     int nalHeaderType = (data.getData()[0] >> 1) & 0x3F;
-    bufferFlags = getBufferFlagsFromNalType(nalHeaderType);
+    bufferFlags |= getBufferFlagsFromNalType(nalHeaderType);
   }
 
   /**
@@ -278,6 +278,9 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     boolean isLastFuPacket = (fuHeader & 0x40) > 0;
 
     if (isFirstFuPacket) {
+      // Some recorders shift FuType on continuation packets. The start fragment already
+      // supplies the NAL type used to reconstruct the coded picture's header below.
+      fragmentedNalFlags = getBufferFlagsFromNalType(nalUnitType);
       // Prepends starter code.
       fragmentedSampleSizeBytes += writeStartCode();
 
@@ -294,6 +297,7 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
       // Check that this packet is in the sequence of the previous packet.
       int expectedSequenceNumber = (previousSequenceNumber + 1) % RtpPacket.MAX_SEQUENCE_NUMBER;
       if (packetSequenceNumber != expectedSequenceNumber) {
+        fragmentedNalFlags = 0;
         Log.w(
             TAG,
             Util.formatInvariant(
@@ -313,7 +317,8 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
     fragmentedSampleSizeBytes += fragmentSize;
 
     if (isLastFuPacket) {
-      bufferFlags = getBufferFlagsFromNalType(nalUnitType);
+      bufferFlags |= fragmentedNalFlags;
+      fragmentedNalFlags = 0;
     }
   }
 
@@ -325,6 +330,7 @@ import org.checkerframework.checker.nullness.qual.RequiresNonNull;
   }
 
   private static @C.BufferFlags int getBufferFlagsFromNalType(int nalType) {
-    return (nalType == NAL_IDR_W_RADL || nalType == NAL_IDR_N_LP) ? C.BUFFER_FLAG_KEY_FRAME : 0;
+    // Defined IRAP pictures: BLA (16-18), IDR (19-20), CRA (21). 22-23 are reserved.
+    return nalType >= 16 && nalType <= 21 ? C.BUFFER_FLAG_KEY_FRAME : 0;
   }
 }

@@ -91,8 +91,13 @@ public final class InBandPlaybackTest {
     @Test public void hevcOutOfBandControlDecodesTheSameSyntheticVideo() throws Exception { play(true, false, true); }
     @Test public void missingFmtpDecodesFirstFrameFromInterleavedInBandH265() throws Exception { play(false, false, true); }
     @Test public void missingFmtpHevcFullscreenDecodesAndReleases() throws Exception { play(false, true, true); }
+    @Test public void recorderShiftedHevcContinuationHeadersDecodeWithoutFmtp() throws Exception { play(false, false, true, true); }
+    @Test public void recorderShiftedHevcContinuationHeadersDecodeWithFmtp() throws Exception { play(true, false, true, true); }
     private void play(boolean withFmtp, boolean fullscreen) throws Exception { play(withFmtp, fullscreen, false); }
     private void play(boolean withFmtp, boolean fullscreen, boolean hevc) throws Exception {
+        play(withFmtp, fullscreen, hevc, false);
+    }
+    private void play(boolean withFmtp, boolean fullscreen, boolean hevc, boolean shiftedHevcFu) throws Exception {
         // Fail before launching: MainActivity automatically starts saved cameras. Use a clean
         // instrumentation install; never overwrite profiles or contact a configured camera.
         assertTrue("Run on a clean test install with no saved locations",
@@ -112,6 +117,7 @@ public final class InBandPlaybackTest {
         AtomicReference<String> diagnostics = new AtomicReference<>("no failure callback");
         AtomicReference<StreamTile> tile = new AtomicReference<>();
         try (LoopbackRtspServer server = new LoopbackRtspServer(fixture, withFmtp, hevc)) {
+            server.shiftedHevcFu = shiftedHevcFu;
             try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
                 scenario.onActivity(activity -> {
                     FrameLayout content = new FrameLayout(activity);
@@ -289,6 +295,7 @@ public final class InBandPlaybackTest {
         private volatile Thread sender;
         private volatile boolean closed;
         private volatile boolean playing;
+        volatile boolean shiftedHevcFu;
         volatile int singleNalPackets;
         volatile int setupRequests,playRequests;
         volatile int fuPackets;
@@ -431,7 +438,10 @@ public final class InBandPlaybackTest {
                                     byte[] fu = new byte[count + (hevc ? 3 : 2)];
                                     if (hevc) {
                                         fu[0] = (byte) ((nal[0] & 0x81) | (49 << 1)); fu[1] = nal[1];
-                                        fu[2] = (byte) (((nal[0] >> 1) & 63) | (offset == 2 ? 0x80 : 0) | (end ? 0x40 : 0));
+                                        int type = (nal[0] >> 1) & 63;
+                                        // Reproduce the observed recorder: continuation FuType uses shifted NAL bits.
+                                        if (shiftedHevcFu && offset != 2) type = (type << 1) & 63;
+                                        fu[2] = (byte) (type | (offset == 2 ? 0x80 : 0) | (end ? 0x40 : 0));
                                     } else {
                                         fu[0] = (byte) ((nal[0] & 0xe0) | 28);
                                         fu[1] = (byte) ((nal[0] & 31) | (offset == 1 ? 0x80 : 0) | (end ? 0x40 : 0));

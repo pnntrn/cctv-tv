@@ -2,6 +2,13 @@
 
 Release candidates remain subject to the physical-device checks listed below. Source history is available in [GitHub releases](https://github.com/pnntrn/cctv-tv/releases).
 
+## 0.4.5 — release candidate
+
+- Fix HEVC black-screen startup for an observed recorder FU sequence: the IDR start identifies type19, but continuation/end packets report type38. Use the start fragment's key status when completing the NAL instead of misclassifying the end header.
+- Accumulate key status across one RTP-marker-delimited picture and clear it on marker/seek. Recognize defined BLA/IDR/CRA random-access pictures (types16–21).
+- Add synthetic native decoder regressions for the observed header pattern with and without SDP codec parameters. No private camera footage or credentials are included.
+- Retain package, signing key, profiles, recorder encoding and dependencies. Version code:1013. Physical-device verification is recorded in the PR.
+
 ## 0.4.4 — release candidate
 
 - Auto-detect codec and give technicians separate substream/mainstream tests, with real decoded-frame results and detected H.264 or H.265/HEVC labels. H.265+ is not claimed as a separately detected mode.
