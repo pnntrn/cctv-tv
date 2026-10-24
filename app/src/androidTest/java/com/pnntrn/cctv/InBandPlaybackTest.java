@@ -219,6 +219,7 @@ public final class InBandPlaybackTest {
                 assertNull("Loopback server failed", server.failure.get());
                 assertTrue("Expected single-NAL RTP packets", server.singleNalPackets > 0);
                 assertTrue("Expected fragmented RTP packets", server.fuPackets > 0);
+                server.expectClientDisconnect = true;
                 InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> tile.get().release());
                 server.control.join(2000);
                 assertFalse("Releasing the tile must close its live RTSP connection",server.control.isAlive());
@@ -301,6 +302,7 @@ public final class InBandPlaybackTest {
             awaitPreviewFocus(scenario, false);
             device.pressDPadRight();
             awaitPreviewFocus(scenario, true);
+            sub.expectClientDisconnect = true;
             device.pressDPadCenter();
             assertTrue("Mainstream must actually decode HEVC", device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.textContains("H.265 / HEVC")), 30000));
             sub.control.join(2000);
@@ -313,6 +315,8 @@ public final class InBandPlaybackTest {
                 assertEquals(1,((ArrayList<?>)privateField(activity,"streams")).size());
             } catch (Exception e) { throw new AssertionError(e); } });
             if (preset == CameraRules.Preset.HIKVISION) { device.waitForIdle(); assertTrue(device.takeScreenshot(new java.io.File(context.getFilesDir(),"ui-codec-main.png"))); }
+            assertNull("MAIN must stay connected before intentional preview close", main.failure.get());
+            main.expectClientDisconnect = true;
             scenario.onActivity(activity -> { try {
                 android.app.AlertDialog dialog = (android.app.AlertDialog)privateField(activity,"connectionPreview");
                 dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
@@ -343,9 +347,12 @@ public final class InBandPlaybackTest {
         private volatile Thread sender;
         private volatile boolean closed;
         private volatile boolean playing;
+        private volatile boolean expectClientDisconnect;
         volatile boolean shiftedHevcFu;
         volatile int singleNalPackets;
         volatile int setupRequests,playRequests;
+        private int videoChannel;
+        private final java.util.Set<Integer> channels = new java.util.HashSet<>();
         volatile int fuPackets;
         private OutputStream output;
         private int sequence = 1000;
@@ -423,13 +430,24 @@ public final class InBandPlaybackTest {
                                     + url() + "\r\n", sdp);
                             break;
                         case "SETUP":
-                            setupRequests++;
-                            if (!transport.contains("RTP/AVP/TCP")
-                                    || !transport.contains("interleaved=0-1")) {
-                                throw new IOException("Expected RTP-over-TCP channels 0-1");
+                            java.util.regex.Matcher pair = java.util.regex.Pattern.compile("(?:^|;)interleaved=(\\d+)-(\\d+)(?:;|$)").matcher(transport);
+                            if (!transport.contains("RTP/AVP/TCP") || !pair.find())
+                                throw new IOException("Expected RTP-over-TCP channel pair");
+                            int rtpChannel = Integer.parseInt(pair.group(1));
+                            int rtcpChannel = Integer.parseInt(pair.group(2));
+                            if (rtpChannel < 0 || rtcpChannel > 255 || rtcpChannel != rtpChannel + 1
+                                    || !channels.add(rtpChannel) || !channels.add(rtcpChannel))
+                                throw new IOException("Invalid or duplicate interleaved channels");
+                            String requestedPath = java.net.URI.create(request.split(" ")[1]).getPath();
+                            if (requestedPath.equals(java.net.URI.create(trackUrl()).getPath())) {
+                                if (++setupRequests != 1) throw new IOException("Unexpected second video SETUP");
+                                videoChannel = rtpChannel;
+                            } else if (!requestedPath.endsWith("/trackID=2") && !requestedPath.endsWith("/track2")
+                                    && !requestedPath.endsWith("/track3")) {
+                                throw new IOException("Unexpected fixture track");
                             }
                             respond(cseq, "Session: fixture;timeout=60\r\n"
-                                    + "Transport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n", "");
+                                    + "Transport: RTP/AVP/TCP;unicast;interleaved=" + rtpChannel + "-" + rtcpChannel + "\r\n", "");
                             break;
                         case "PLAY":
                             playRequests++;
@@ -449,7 +467,8 @@ public final class InBandPlaybackTest {
                     }
                 }
             } catch (IOException | RuntimeException error) {
-                if (!closed) failure.compareAndSet(null, error);
+                if (!closed && !(expectClientDisconnect && error instanceof java.net.SocketException))
+                    failure.compareAndSet(null, error);
             } finally {
                 playing = false;
             }
@@ -508,7 +527,8 @@ public final class InBandPlaybackTest {
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
             } catch (IOException error) {
-                if (!closed && playing) failure.compareAndSet(null, error);
+                if (!closed && playing && !(expectClientDisconnect && error instanceof java.net.SocketException))
+                    failure.compareAndSet(null, error);
             }
         }
 
@@ -522,7 +542,7 @@ public final class InBandPlaybackTest {
             rtp[8] = 0x12; rtp[9] = 0x34; rtp[10] = 0x56; rtp[11] = 0x78;
             System.arraycopy(payload, 0, rtp, 12, payload.length);
             synchronized (outputLock) {
-                output.write(new byte[] {'$', 0, (byte) (rtp.length >> 8), (byte) rtp.length});
+                output.write(new byte[] {'$', (byte)videoChannel, (byte) (rtp.length >> 8), (byte) rtp.length});
                 output.write(rtp);
                 output.flush();
             }

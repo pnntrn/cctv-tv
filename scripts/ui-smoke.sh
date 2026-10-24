@@ -20,8 +20,16 @@ adb install -r "$(find test-apks -name app-debug-androidTest.apk -print -quit)"
 for test_class in InBandPlaybackTest RecorderDraftFlowTest TvFlowTest ViewingFlowTest; do
   adb shell pm clear com.pnntrn.cctv >/dev/null
   adb logcat -c
-  adb shell am instrument -w -e class "com.pnntrn.cctv.$test_class" com.pnntrn.cctv.test/androidx.test.runner.AndroidJUnitRunner | tee -a ui-results/instrumentation.txt
+  # Preserve the exact running test and codec evidence if a native call stalls.
+  set +e
+  timeout 8m adb shell am instrument -w -r -e class "com.pnntrn.cctv.$test_class" com.pnntrn.cctv.test/androidx.test.runner.AndroidJUnitRunner | tee -a ui-results/instrumentation.txt
+  test_status=${PIPESTATUS[0]}
+  set -e
   adb logcat -d -v brief -s CCTVPlayback ExoPlayerImplInternal MediaCodecVideoRenderer ACodec OMXClient MediaCodec SoftAVC SoftAVCDec OMXNodeInstance > "ui-results/$test_class-codec.txt"
+  if [ "$test_status" -ne 0 ]; then
+    echo "Native class $test_class failed or timed out (exit $test_status)"
+    exit "$test_status"
+  fi
   # Save each class's captures before the next clean-install fixture reset removes them.
   for name in grid fullscreen settings recorder updates idle viewing-menu technician-entry technician-empty mi-box-empty mi-box-menu mi-box-technician codec-sub codec-main; do
     if adb shell run-as com.pnntrn.cctv ls "files/ui-$name.png" >/dev/null 2>&1; then

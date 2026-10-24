@@ -320,6 +320,8 @@ final class VlcStreamPlayer {
                 options.add("--rtsp-tcp");
                 options.add("--network-caching=" + NETWORK_CACHE_MS);
                 options.add("--quiet");
+                // Android's logger checks verbose directly; quiet alone still logs failed MRLs.
+                options.add("--verbose=-1");
                 options.add("--no-video-title-show");
                 options.add("--no-osd");
                 sharedLibVlc = new LibVLC(context, options);
