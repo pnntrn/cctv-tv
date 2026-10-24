@@ -1,0 +1,54 @@
+name: "Bug report / รายงานปัญหา"
+description: "Report reproducible CCTV behavior / แจ้งปัญหาพร้อมขั้นตอนทำซ้ำ"
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For vulnerabilities, use [private reporting](https://github.com/pnntrn/cctv-tv/security/advisories/new).
+        ห้ามใส่รหัสผ่าน URL ที่มีข้อมูลเข้าสู่ระบบ ภาพกล้องจริง หรือ raw private logs
+        Do not include credentials, private addresses, real camera footage or unredacted logs.
+  - type: input
+    id: version
+    attributes:
+      label: "App version and install source / เวอร์ชันและแหล่งติดตั้ง"
+      description: "Include version code if known; release APK or debug build."
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: "TV model and Android version / รุ่นทีวีและเวอร์ชัน Android"
+    validations:
+      required: true
+  - type: input
+    id: stream
+    attributes:
+      label: "Recorder, firmware and codec / เครื่องบันทึก เฟิร์มแวร์ และ codec"
+      description: "If playback is affected, include H.264/H.265, grid size and main/substream; write unknown when unsure. No IP address or RTSP URL."
+  - type: textarea
+    id: steps
+    attributes:
+      label: "Steps to reproduce / ขั้นตอนทำซ้ำ"
+      description: "Include the remote buttons used and whether the app was backgrounded or reopened."
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: "Expected and actual result / ผลที่คาดหวังและผลที่เกิดขึ้น"
+      description: "Quote the safe on-screen error if relevant."
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: "Sanitized evidence / หลักฐานที่ลบข้อมูลสำคัญแล้ว"
+      description: "Optional. Use offline/synthetic screenshots. Review any diagnostic excerpt before posting."
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: "Privacy check / ตรวจข้อมูลส่วนตัว"
+      options:
+        - label: "I removed credentials, private camera details, real footage and private raw logs. / ลบข้อมูลลับแล้ว"
+          required: true

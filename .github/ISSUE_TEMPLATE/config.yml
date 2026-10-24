@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "Private security report / รายงานช่องโหว่ส่วนตัว"
+    url: https://github.com/pnntrn/cctv-tv/security/advisories/new
+    about: "Report suspected vulnerabilities privately; do not use a public issue."
+  - name: "Usage and setup / วิธีใช้งานและตั้งค่า"
+    url: https://github.com/pnntrn/cctv-tv#readme
+    about: "Read remote controls, recorder setup and known limitations."
+  - name: "Downloads and release notes / ดาวน์โหลดและบันทึกรุ่น"
+    url: https://github.com/pnntrn/cctv-tv/releases
+    about: "Find signed candidates and checksums."
