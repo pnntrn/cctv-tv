@@ -24,6 +24,7 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 /** One visible stream; no offscreen player, no preview network requests, bounded retry. */
 @UnstableApi
 public final class StreamTile extends FrameLayout {
+    private static final String STATS_TAG = "CCTVPlayback";
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final SurfaceView surface;
     private final TextView status;
@@ -115,6 +116,7 @@ public final class StreamTile extends FrameLayout {
                 @Override public void onRenderedFirstFrame() {
                     if (!current()) return;
                     failures = 0; status.setVisibility(GONE);
+                    logPlaybackStats("first-frame");
                     if (listener != null) listener.onFirstFrame();
                 }
                 @Override public void onVideoSizeChanged(VideoSize size) {
@@ -125,9 +127,11 @@ public final class StreamTile extends FrameLayout {
                 }
                 @Override public void onPlayerError(PlaybackException error) {
                     if (!current()) return;
+                    logPlaybackStats("error-" + error.errorCode);
                     fail(PlaybackFailure.classify(error, error.errorCode));
                 }
                 @Override public void onPlaybackStateChanged(int state) {
+                    if (current()) logPlaybackStats("state-" + state);
                     if (current() && state == Player.STATE_ENDED) fail(PlaybackFailure.NETWORK);
                 }
             });
@@ -144,6 +148,7 @@ public final class StreamTile extends FrameLayout {
 
     private void watchdog(int token) {
         if (released || token != generation) return;
+        logPlaybackStats("watchdog");
         if (SystemClock.elapsedRealtime() - lastFrame > (main ? 12000 : 25000)) { fail(PlaybackFailure.TIMEOUT); return; }
         handler.postDelayed(() -> watchdog(token), 5000);
     }
@@ -169,7 +174,30 @@ public final class StreamTile extends FrameLayout {
     }
 
     private void releasePlayer() {
-        if (player != null) { player.clearVideoSurface(); player.release(); player = null; }
+        if (player != null) { logPlaybackStats("release"); player.clearVideoSurface(); player.release(); player = null; }
+    }
+
+    /** Opt-in ADB diagnostics: aggregate counters only, never names, URLs or credentials. */
+    private void logPlaybackStats(String event) {
+        if (player == null || !android.util.Log.isLoggable(STATS_TAG, android.util.Log.DEBUG)) return;
+        androidx.media3.common.Format format = player.getVideoFormat();
+        androidx.media3.exoplayer.DecoderCounters counters = player.getVideoDecoderCounters();
+        if (counters == null) return;
+        counters.ensureUpdated();
+        android.util.Log.d(STATS_TAG, "event=" + event + " kind=" + (main ? "MAIN" : "SUB")
+                + " atMs=" + SystemClock.elapsedRealtime() + " state=" + player.getPlaybackState()
+                + " posMs=" + player.getCurrentPosition()
+                + " bufferMs=" + Math.max(0, player.getBufferedPosition() - player.getCurrentPosition())
+                + " size=" + (format == null ? "unknown" : format.width + "x" + format.height)
+                + " fps=" + (format == null ? -1 : format.frameRate)
+                + " queued=" + counters.queuedInputBufferCount
+                + " rendered=" + counters.renderedOutputBufferCount
+                + " dropped=" + counters.droppedBufferCount
+                + " skipped=" + counters.skippedOutputBufferCount
+                + " keyDrops=" + counters.droppedToKeyframeCount
+                + " maxDropRun=" + counters.maxConsecutiveDroppedBufferCount
+                + " offsetUs=" + counters.totalVideoFrameProcessingOffsetUs
+                + " offsetCount=" + counters.videoFrameProcessingOffsetCount);
     }
 
     public void release() {
