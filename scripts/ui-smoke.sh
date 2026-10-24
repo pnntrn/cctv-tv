@@ -13,6 +13,7 @@ assert 'Physical size: 1920x1080' in Path('ui-results/display.txt').read_text(),
 DISPLAY
 adb shell input keyevent KEYCODE_WAKEUP
 adb shell wm dismiss-keyguard
+adb shell setprop log.tag.CCTVPlayback DEBUG
 adb install -r "$(find test-apks -name app-debug.apk -print -quit)"
 adb install -r "$(find test-apks -name app-debug-androidTest.apk -print -quit)"
 : > ui-results/instrumentation.txt
@@ -20,7 +21,7 @@ for test_class in InBandPlaybackTest RecorderDraftFlowTest TvFlowTest ViewingFlo
   adb shell pm clear com.pnntrn.cctv >/dev/null
   adb logcat -c
   adb shell am instrument -w -e class "com.pnntrn.cctv.$test_class" com.pnntrn.cctv.test/androidx.test.runner.AndroidJUnitRunner | tee -a ui-results/instrumentation.txt
-  adb logcat -d -v brief -s ExoPlayerImplInternal MediaCodecVideoRenderer ACodec OMXClient MediaCodec SoftAVC SoftAVCDec OMXNodeInstance > "ui-results/$test_class-codec.txt"
+  adb logcat -d -v brief -s CCTVPlayback ExoPlayerImplInternal MediaCodecVideoRenderer ACodec OMXClient MediaCodec SoftAVC SoftAVCDec OMXNodeInstance > "ui-results/$test_class-codec.txt"
   # Save each class's captures before the next clean-install fixture reset removes them.
   for name in grid fullscreen settings recorder updates idle viewing-menu technician-entry technician-empty mi-box-empty mi-box-menu mi-box-technician codec-sub codec-main; do
     if adb shell run-as com.pnntrn.cctv ls "files/ui-$name.png" >/dev/null 2>&1; then

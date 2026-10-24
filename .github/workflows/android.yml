@@ -5,6 +5,11 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      build_only:
+        description: Build signed APK for private device testing; PR and tag native gates remain required
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -96,6 +101,7 @@ jobs:
           if-no-files-found: ignore
 
   ui-smoke:
+    if: github.event_name != 'workflow_dispatch' || inputs.build_only != true
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 25

@@ -91,6 +91,8 @@ public final class InBandPlaybackTest {
     @Test public void hevcOutOfBandControlDecodesTheSameSyntheticVideo() throws Exception { play(true, false, true); }
     @Test public void missingFmtpDecodesFirstFrameFromInterleavedInBandH265() throws Exception { play(false, false, true); }
     @Test public void missingFmtpHevcFullscreenDecodesAndReleases() throws Exception { play(false, true, true); }
+    @Test public void vlcH264MainstreamWithFmtpDecodesAndClosesConnection() throws Exception { play(true, true, false); }
+    @Test public void vlcHevcMainstreamWithFmtpDecodesAndClosesConnection() throws Exception { play(true, true, true); }
     @Test public void recorderShiftedHevcContinuationHeadersDecodeWithoutFmtp() throws Exception { play(false, false, true, true); }
     @Test public void recorderShiftedHevcContinuationHeadersDecodeWithFmtp() throws Exception { play(true, false, true, true); }
     private void play(boolean withFmtp, boolean fullscreen) throws Exception { play(withFmtp, fullscreen, false); }
@@ -161,13 +163,19 @@ public final class InBandPlaybackTest {
                     stream.start(0);
                 });
                 assertTrue("Native video Surface must be created on the physical TV display",surfaceReady.await(5,TimeUnit.SECONDS));
-                // Only ExoPlayer's rendered-first-frame callback can satisfy this latch.
+                // Only rendered-frame evidence from the selected engine can satisfy this latch.
                 // OPTIONS, DESCRIBE, SETUP and PLAY responses alone must never pass the test.
                 boolean rendered = firstFrame.await(30, TimeUnit.SECONDS);
                 assertTrue("No decoded frame in 30s; fmtp="+withFmtp+"; playback=" + failure.get()
                         + "; server=" + server.failure.get()+"; setup="+server.setupRequests+"; play="+server.playRequests
                         +"; single="+server.singleNalPackets+"; fu="+server.fuPackets+"; "+diagnostics.get(), rendered);
                 assertNull("Playback failed before first frame", failure.get());
+                scenario.onActivity(activity -> { try {
+                    StreamTile active = tile.get();
+                    assertEquals(hevc ? "H.265 / HEVC" : "H.264", active.detectedVideoCodec());
+                    assertEquals("MAIN must use the compatibility engine", fullscreen,
+                            privateField(active, "vlc") != null);
+                } catch (Exception e) { throw new AssertionError(e); } });
                 assertNull("Loopback server failed", server.failure.get());
                 assertTrue("Expected single-NAL RTP packets", server.singleNalPackets > 0);
                 assertTrue("Expected fragmented RTP packets", server.fuPackets > 0);
