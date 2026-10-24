@@ -218,18 +218,22 @@ public class ViewingFlowTest {
             SystemClock.sleep(3200);
             scenario.onActivity(a -> { assertNull(value(a, "technicianConfirmation")); assertNotNull(value(a, "viewingMenu")); });
 
-            long back = keyDown(scenario, InputWindow.VIEWING_MENU, KeyEvent.KEYCODE_BACK);
-            awaitText(scenario, device, context.getString(R.string.tv_enter_setup), 4500,
-                    "Holding Back in viewing options must request technician confirmation");
+            assertTrue("Viewing menu must offer Settings without a hidden Back gesture",
+                    device.hasObject(By.text("ตั้งค่า")));
+            for (int i = 0; i < 3; i++) device.pressDPadDown();
+            scenario.onActivity(a -> assertEquals("ตั้งค่า", ((AlertDialog) value(a, "viewingMenu"))
+                    .getListView().getSelectedItem()));
+            device.pressDPadCenter();
+            awaitText(scenario, device, context.getString(R.string.tv_enter_setup), 2500,
+                    "Selecting Settings must request technician confirmation");
             awaitInputFocus(scenario, InputWindow.TECHNICIAN_CONFIRMATION);
-            sendKey(back, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK, 1, KeyEvent.FLAG_LONG_PRESS);
-            sendKey(back, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK, 0, 0);
             scenario.onActivity(a -> {
                 AlertDialog confirmation = (AlertDialog) value(a, "technicianConfirmation");
-                assertNotNull("The held Back release must not dismiss confirmation", confirmation);
+                assertNotNull(confirmation);
                 assertTrue(confirmation.isShowing());
                 assertTrue(confirmation.getButton(AlertDialog.BUTTON_NEGATIVE).hasFocus());
                 assertFalse((Boolean) value(a, "technician"));
+                assertFalse((Boolean) value(a, "managing"));
             });
             screenshot(device, "mi-box-technician");
             awaitInputFocus(scenario, InputWindow.TECHNICIAN_CONFIRMATION);
@@ -244,6 +248,15 @@ public class ViewingFlowTest {
             scenario.onActivity(a -> { assertNull(value(a, "viewingMenu")); assertFalse((Boolean) value(a, "technician")); });
             hold(scenario, InputWindow.ACTIVITY, KeyEvent.KEYCODE_DPAD_CENTER, 1100);
             hold(scenario, InputWindow.VIEWING_MENU, KeyEvent.KEYCODE_BACK, 3200);
+            awaitInputFocus(scenario, InputWindow.ACTIVITY);
+            scenario.onActivity(a -> {
+                assertNull("Long Back must close normally without setup", value(a, "technicianConfirmation"));
+                assertNull(value(a, "viewingMenu")); assertFalse((Boolean) value(a, "technician"));
+            });
+            hold(scenario, InputWindow.ACTIVITY, KeyEvent.KEYCODE_DPAD_CENTER, 1100);
+            awaitInputFocus(scenario, InputWindow.VIEWING_MENU);
+            for (int i = 0; i < 3; i++) device.pressDPadDown();
+            device.pressDPadCenter();
             awaitInputFocus(scenario, InputWindow.TECHNICIAN_CONFIRMATION);
             device.pressDPadRight();
             scenario.onActivity(a -> assertTrue(((AlertDialog) value(a, "technicianConfirmation"))
