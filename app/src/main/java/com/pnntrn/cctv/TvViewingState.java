@@ -8,7 +8,7 @@ final class TvViewingState {
     static final long MENU_HOLD_MS = 3000;
     enum Key {
         // Back is release-only; it never triggers a hold action.
-        OK(OK_HOLD_MS), MENU(MENU_HOLD_MS), VIEWING_BACK(Long.MAX_VALUE);
+        OK(OK_HOLD_MS), LEFT(OK_HOLD_MS), RIGHT(OK_HOLD_MS), MENU(MENU_HOLD_MS), VIEWING_BACK(Long.MAX_VALUE);
         final long holdMillis;
         Key(long holdMillis) { this.holdMillis = holdMillis; }
     }
@@ -59,16 +59,6 @@ final class TvViewingState {
         return CameraRules.clampPage(savedPage, cameras.size(), grid) * grid;
     }
     static int move(int selected, int count, int size, int dx, int dy) {
-        if (count <= 0) return 0;
-        int columns = (int) Math.sqrt(size), start = selected / size * size;
-        int local = selected - start, target = selected;
-        if (dx > 0) target = local % columns == columns - 1 ? start + size + local / columns * columns : selected + 1;
-        if (dx < 0) target = local % columns == 0 ? Math.max(0, start - size) + local + columns - 1 : selected - 1;
-        if (dx < 0 && start == 0 && local % columns == 0) return selected;
-        if (dy != 0) {
-            target = selected + dy * columns;
-            if (target < start || target >= start + size) return selected;
-        }
-        return Math.max(0, Math.min(count - 1, target));
+        return GridLayoutSpec.move(selected, count, size, dx, dy);
     }
 }
