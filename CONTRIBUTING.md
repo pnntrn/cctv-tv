@@ -27,4 +27,4 @@ Without retained signing configuration, a release build is unsigned and cannot b
 
 State what changed, how it was checked and what remains unverified. Follow the [code of conduct](CODE_OF_CONDUCT.md). Report vulnerabilities privately through [GitHub security advisories](https://github.com/pnntrn/cctv-tv/security/advisories/new).
 
-The original project code currently has no project license. Do not assume that public visibility grants permission to reuse or distribute it. The owner is deciding the project license; preserve all existing third-party notices in the meantime. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Original CCTV code is GPLv3 or later, as approved by the owner. Preserve the separate licenses/notices of vendored Media3, LibVLC and native components; follow their source/distribution requirements. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

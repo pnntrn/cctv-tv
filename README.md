@@ -8,7 +8,9 @@
 
 [การใช้งานภาษาไทย](#วิธีใช้งาน) · [Contributing](CONTRIBUTING.md) · [Release guide](docs/RELEASING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 
-A lightweight native Android TV / Google TV RTSP viewer for Android 8.0+. Direct connections to Hikvision, VIGI and custom RTSP cameras. No cloud account, streaming server, WebView, analytics, or bundled FFmpeg.
+A native Android TV / Google TV RTSP viewer for Android 8.0+. Direct connections to Hikvision, VIGI and custom RTSP cameras. No cloud account, streaming server, WebView or analytics. The development branch uses libVLC for MAIN and Media3 for SUB/grid; the public0.4.5 candidate linked below predates that engine change.
+
+Development0.4.6 is under evaluation for continuously choppy MAIN playback ([Issue #2](https://github.com/pnntrn/cctv-tv/issues/2)); it is not yet an approved public release. Repository commands and safety rules are in [AGENTS.md](AGENTS.md), with optional build variables in [.env.example](.env.example).
 
 ## Download
 
@@ -145,3 +147,8 @@ This verifies the retained certificate and version, then publishes the APK, publ
 ## License and notices
 
 The original CCTV project code currently has no project license; public source availability does not grant a general license to reuse or redistribute it. The owner is choosing the project license. Vendored Media3 code retains its Apache-2.0 license and upstream notices. See [third-party notices](THIRD_PARTY_NOTICES.md).
+
+
+## License
+
+Original CCTV code is licensed under [GPLv3 or later](LICENSE), as approved by the owner. Vendored Media3 remains under its Apache2.0 notices; LibVLC and its components retain their own licenses and source obligations. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the [LibVLC source index](third_party/libvlc/SOURCE-INDEX.md). Development0.4.6 remains a private evaluation until native/device checks, distribution materials and explicit release approval are complete.
