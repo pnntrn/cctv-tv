@@ -4,7 +4,7 @@ CCTV 0.4.4 (version code 1012) is a candidate for physical-device verification. 
 
 ## Before tagging
 
-1. Review the changelog and version in `app/build.gradle`. Increase the version code. A candidate tag such as `v0.4.4-rc.1` must agree with APK version `0.4.4`; the suffix identifies the release candidate.
+1. Review the changelog and version in `app/build.gradle`. Increase the version code. A candidate tag such as `v0.4.4-rc.2` must agree with APK version `0.4.4`; the suffix identifies the release candidate.
 2. Run the commands in [CONTRIBUTING.md](../CONTRIBUTING.md), including Python release-verifier tests. Require the build and native TV CI jobs to pass for the source being released. Inspect native screenshots. Do not convert historical emulator results into physical-device claims.
 3. Confirm the retained `CCTV_SIGNING_BUNDLE` repository Actions secret is configured. It contains JSON fields `keystore` (base64 PKCS12), `password` and `alias`. Signing files are private, never source or release assets. `scripts/configure-signing.sh` is initial bootstrap tooling; do not generate a replacement key for existing installations.
 4. Keep `rtsp-compat/LICENSE`, source notices and [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md). Resolve the project's own licensing status before claiming a project license or redistribution permission.
@@ -13,7 +13,7 @@ CCTV 0.4.4 (version code 1012) is a candidate for physical-device verification. 
 
 Push the reviewed candidate tag only when ready to publish. The tag workflow publishes after both build and native TV checks pass. It uses `scripts/prepare-release.py` to reject unsigned APKs, wrong package/certificate and mismatched version/tag inputs before preparing release assets. Consult `python3 scripts/prepare-release.py --help` for its exact local interface. Pull requests without signing credentials must still build and test; unsigned outputs must never be published as installable releases.
 
-The installable asset is `cctv-release.apk`, accompanied by `SHA256SUMS` and the applicable license/notices. Mark `v0.4.4-rc.1` as a prerelease. Release notes must retain the outstanding Hikvision/Mi Box, 11-channel, decoder-capacity and in-place update/profile checks. Keep the review PR unmerged until its review is complete.
+The installable asset is `cctv-release.apk`, accompanied by `SHA256SUMS` and the applicable license/notices. Mark `v0.4.4-rc.2` as a prerelease. Release notes must retain the outstanding Hikvision/Mi Box, 11-channel, decoder-capacity and in-place update/profile checks. Keep the review PR unmerged until its review is complete.
 
 After publication, download the APK and checksums anonymously from [Releases](https://github.com/pnntrn/cctv-tv/releases). Check the SHA-256 and inspect it using Android SDK tools:
 

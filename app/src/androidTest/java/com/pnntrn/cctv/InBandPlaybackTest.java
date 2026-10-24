@@ -191,6 +191,25 @@ public final class InBandPlaybackTest {
     private static Object privateField(Object owner, String name) throws Exception {
         java.lang.reflect.Field field = owner.getClass().getDeclaredField(name); field.setAccessible(true); return field.get(owner);
     }
+    private void awaitPreviewFocus(ActivityScenario<MainActivity> scenario, boolean mainButton) {
+        long deadline = android.os.SystemClock.uptimeMillis() + 5000;
+        boolean[] ready = {false}; String[] state = {"no Activity callback"};
+        do {
+            scenario.onActivity(activity -> { try {
+                android.app.AlertDialog dialog = (android.app.AlertDialog)privateField(activity,"connectionPreview");
+                View decor = dialog == null ? null : dialog.getWindow().getDecorView();
+                View main = decor == null ? null : decor.findViewWithTag("stream-test-main");
+                ready[0] = dialog != null && dialog.isShowing() && decor.hasWindowFocus()
+                        && (!mainButton || (main != null && main.hasFocus()));
+                state[0] = "activityFocus=" + activity.hasWindowFocus() + ", dialog=" + (dialog != null && dialog.isShowing())
+                        + ", windowFocus=" + (decor != null && decor.hasWindowFocus()) + ", touchMode=" + (decor != null && decor.isInTouchMode())
+                        + ", mainFocus=" + (main != null && main.hasFocus());
+            } catch (Exception e) { throw new AssertionError(e); } });
+            if (ready[0]) return;
+            android.os.SystemClock.sleep(25);
+        } while (android.os.SystemClock.uptimeMillis() < deadline);
+        fail("Expected preview " + (mainButton ? "main-button" : "window") + " focus within 5s; " + state[0]);
+    }
     private void checkBothStreams(CameraRules.Preset preset) throws Exception {
         var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         assertTrue("Only clean synthetic fixture installs may run this test", new ProfileStore(context).load().isEmpty());
@@ -212,18 +231,22 @@ public final class InBandPlaybackTest {
             } catch (Exception e) { throw new AssertionError(e); } });
             var device = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
             assertTrue("Substream must actually decode H.264", device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.textContains("H.264")), 30000));
+            awaitPreviewFocus(scenario, false);
+            device.pressDPadDown(); // Establish remote navigation mode before setting the gesture's starting focus.
             scenario.onActivity(activity -> { try {
                 android.app.AlertDialog dialog = (android.app.AlertDialog)privateField(activity,"connectionPreview");
                 assertTrue(dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).isEnabled());
                 StreamTile tile = (StreamTile)((ArrayList<?>)privateField(activity,"streams")).get(0);
                 assertEquals("H.264", tile.detectedVideoCodec());
-                dialog.getWindow().getDecorView().findViewWithTag("stream-test-sub").requestFocus();
+                View subButton = dialog.getWindow().getDecorView().findViewWithTag("stream-test-sub");
+                assertTrue("Substream button must accept remote starting focus", subButton.requestFocus());
+                assertTrue(subButton.hasFocus());
             } catch (Exception e) { throw new AssertionError(e); } });
-            if (preset == CameraRules.Preset.HIKVISION) { device.waitForIdle(); assertTrue(device.takeScreenshot(new java.io.File(context.getFilesDir(),"ui-codec-sub.png"))); }
+            device.waitForIdle();
+            if (preset == CameraRules.Preset.HIKVISION) assertTrue(device.takeScreenshot(new java.io.File(context.getFilesDir(),"ui-codec-sub.png")));
+            awaitPreviewFocus(scenario, false);
             device.pressDPadRight();
-            scenario.onActivity(activity -> { try {
-                assertTrue(((android.app.AlertDialog)privateField(activity,"connectionPreview")).getWindow().getDecorView().findViewWithTag("stream-test-main").hasFocus());
-            } catch (Exception e) { throw new AssertionError(e); } });
+            awaitPreviewFocus(scenario, true);
             device.pressDPadCenter();
             assertTrue("Mainstream must actually decode HEVC", device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.textContains("H.265 / HEVC")), 30000));
             sub.control.join(2000);
