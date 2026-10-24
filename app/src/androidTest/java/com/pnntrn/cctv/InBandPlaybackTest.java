@@ -118,9 +118,9 @@ public final class InBandPlaybackTest {
             awaitHealth(scenario,tile.get(),"FPS",5000);
             if(!hevc){
                 scenario.onActivity(activity->{try {var reveal=MainActivity.class.getDeclaredMethod("revealChrome");reveal.setAccessible(true);reveal.invoke(activity);}catch(Exception e){throw new AssertionError(e);}});
-                assertTrue(androidx.test.uiautomator.UiDevice.getInstance(instrumentation).takeScreenshot(new java.io.File(instrumentation.getTargetContext().getFilesDir(),"ui-refined-fullscreen.png")));
+                captureDrawn(scenario,"refined-fullscreen");
             }
-            android.os.SystemClock.sleep(3200); // The same image is deliberately re-encoded at new timestamps.
+            android.os.SystemClock.sleep(3200); // Repeat the same encoded picture at new RTP timestamps.
             scenario.onActivity(activity->{try {
                 StreamTile stream=tile.get();android.widget.TextView health=stream.findViewWithTag("frame-health");
                 assertTrue("Still scenes with new rendered frames stay live",health.getText().toString().contains("FPS"));
@@ -128,10 +128,10 @@ public final class InBandPlaybackTest {
                 assertTrue(((android.widget.TextView)privateField(stream,"title")).getText().toString().contains("ประตูโกดัง"));
                 stream.setChromeVisible(false);assertEquals(View.VISIBLE,health.getVisibility());
             }catch(Exception e){throw new AssertionError(e);}});
-            if(!hevc)assertTrue(androidx.test.uiautomator.UiDevice.getInstance(instrumentation).takeScreenshot(new java.io.File(instrumentation.getTargetContext().getFilesDir(),"ui-frame-live.png")));
+            if(!hevc)captureDrawn(scenario,"frame-live");
             server.pauseFrames=true;
             awaitHealth(scenario,tile.get(),"ไม่มีเฟรมใหม่",10000);
-            if(!hevc)assertTrue(androidx.test.uiautomator.UiDevice.getInstance(instrumentation).takeScreenshot(new java.io.File(instrumentation.getTargetContext().getFilesDir(),"ui-frame-stalled.png")));
+            if(!hevc)captureDrawn(scenario,"frame-stalled");
             server.pauseFrames=false;awaitHealth(scenario,tile.get(),"FPS",7000);
             long[] sampled={0};
             scenario.onActivity(activity->{try {
@@ -145,6 +145,14 @@ public final class InBandPlaybackTest {
             scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);
             instrumentation.runOnMainSync(()->{try {assertNull("Background lifecycle must release the player",privateField(tile.get(),"player"));}catch(Exception e){throw new AssertionError(e);}});
         } finally {instrumentation.runOnMainSync(()->{if(tile.get()!=null)tile.get().release();});}
+    }
+    private static void captureDrawn(ActivityScenario<MainActivity> scenario,String name) throws Exception {
+        CountDownLatch drawn=new CountDownLatch(1);
+        scenario.onActivity(activity->{View decor=activity.getWindow().getDecorView();decor.postOnAnimation(()->decor.postOnAnimation(drawn::countDown));});
+        assertTrue("Updated badge must compose before screenshot",drawn.await(5,TimeUnit.SECONDS));
+        var instrumentation=InstrumentationRegistry.getInstrumentation();
+        assertTrue(androidx.test.uiautomator.UiDevice.getInstance(instrumentation).takeScreenshot(
+                new java.io.File(instrumentation.getTargetContext().getFilesDir(),"ui-"+name+".png")));
     }
     private static void awaitHealth(ActivityScenario<MainActivity> scenario,StreamTile tile,String text,long timeout) {
         long end=android.os.SystemClock.uptimeMillis()+timeout;String[] actual={""};
