@@ -80,6 +80,8 @@ final class VlcStreamPlayer {
             media.addOption(":rtsp-tcp");
             media.addOption(":network-caching=" + NETWORK_CACHE_MS);
             media.addOption(":avcodec-threads=1");
+            // Private Mi Box experiment: isolate opaque-surface output from hardware decoding.
+            media.addOption(":no-mediacodec-dr");
             media.addOption(":no-audio");
             media.addOption(":no-spu");
             media.setHWDecoderEnabled(true, false);
