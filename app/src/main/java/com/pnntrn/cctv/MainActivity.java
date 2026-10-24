@@ -221,7 +221,7 @@ public final class MainActivity extends Activity {
             AlertDialog editor = recorderEditor; recorderEditor = null; recorderFields = null; recorderDraft = null; editor.dismiss();
         }
         if (draftExitDialog != null) { draftExitDialog.dismiss(); draftExitDialog = null; }
-        if (arranging) restoreArrangement();
+        if (arranging) { restoreArrangement(); restoreViewingSelection(); }
         restoreStagedLocation(); closePairing(); technician = false; managing = false; arranging = false; grabbed = -1;
     }
     private void viewingMenu() {
@@ -459,8 +459,9 @@ public final class MainActivity extends Activity {
         root.addView(stage,new LinearLayout.LayoutParams(-1,0,1));
         if(cameras.isEmpty()){
             TextView welcome=text(current!=null&&!current.cameras.isEmpty()?getString(R.string.tv_all_channels_hidden):getString(R.string.tv_no_cameras_yet_hold_menu_for_3_seconds_to_set_up),22,TEXT);
-            welcome.setGravity(Gravity.CENTER);stage.addView(welcome,new FrameLayout.LayoutParams(-1,-1));welcome.setFocusable(true);welcome.requestFocus();
-            if(!arranging)addViewingBar(stage);revealChrome();return;
+            welcome.setTag("empty-viewing-target");welcome.setGravity(Gravity.CENTER);stage.addView(welcome,new FrameLayout.LayoutParams(-1,-1));
+            welcome.setFocusable(true);welcome.setFocusableInTouchMode(true);
+            if(!arranging)addViewingBar(stage);welcome.requestFocus();revealChrome();return;
         }
         int size=gridSize();page=CameraRules.clampPage(page,cameras.size(),size);focusedCamera=Math.max(page*size,Math.min(focusedCamera,Math.min(cameras.size()-1,(page+1)*size-1)));
         CameraGridView grid=new CameraGridView(this,size);grid.setTag("camera-grid");stage.addView(grid,new FrameLayout.LayoutParams(-1,-1));
@@ -494,8 +495,11 @@ public final class MainActivity extends Activity {
     }
     private void finishArrangement(boolean save){
         if(!arranging)return;if(!save)restoreArrangement();arranging=false;grabbed=-1;managing=true;
-        focusedCamera=TvViewingState.restoreCameraIndex(current.visibleCameras(),current.grid,current.lastPage,current.lastCameraId);page=focusedCamera/current.grid;
+        restoreViewingSelection();
         if(!save||persist())render();
+    }
+    private void restoreViewingSelection(){
+        focusedCamera=TvViewingState.restoreCameraIndex(current.visibleCameras(),current.grid,current.lastPage,current.lastCameraId);page=focusedCamera/current.grid;
     }
     private void changePage(int direction){
         if(grabbed>=0&&!arranging){toast(getString(R.string.tv_drop_the_camera_with_ok_first));return;}
@@ -522,9 +526,14 @@ public final class MainActivity extends Activity {
         else if(event.getAction()==KeyEvent.ACTION_UP){ui.removeCallbacks(hold);if(event.isCanceled())remote.cancel(key);else openHeldShortcut(key);if(remote.up(key,now))moveViewing(left?-1:1,0);}
         return true;
     }
+    private void focusViewingContent(){
+        if(fullscreen>=0&&fullTile!=null){((View)fullTile.getParent()).requestFocus();return;}
+        if(!tileViews.isEmpty()){tileViews.get(Math.max(0,Math.min(tileViews.size()-1,focusedCamera-page*gridSize()))).requestFocus();return;}
+        View empty=root.findViewWithTag("empty-viewing-target");if(empty!=null)empty.requestFocus();
+    }
     private void moveViewing(int dx,int dy){
         if(viewingBar!=null&&viewingBar.hasFocus()){
-            if(dy>0){if(fullscreen>=0&&fullTile!=null){View parent=(View)fullTile.getParent();parent.requestFocus();}else if(!tileViews.isEmpty())tileViews.get(Math.max(0,Math.min(tileViews.size()-1,focusedCamera-page*gridSize()))).requestFocus();}
+            if(dy>0)focusViewingContent();
             else if(dx!=0){if(dx<0)layoutControl.requestFocus();else locationControl.requestFocus();}return;
         }
         if(current==null||gridCameras().isEmpty()){if(dy<0&&layoutControl!=null)layoutControl.requestFocus();return;}
@@ -624,7 +633,7 @@ public final class MainActivity extends Activity {
         if(arranging){finishArrangement(false);return;}
         if(managing){endTechnician();render();return;}
         if(fullscreen>=0){focusedCamera=fullscreen;page=fullscreen/current.grid;fullscreen=-1;fullSub=true;render();return;}
-        if(viewingBar!=null&&viewingBar.hasFocus()&&!tileViews.isEmpty())tileViews.get(Math.max(0,Math.min(tileViews.size()-1,focusedCamera-page*gridSize()))).requestFocus();
+        if(viewingBar!=null&&viewingBar.hasFocus())focusViewingContent();
         revealChrome();
     }
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent event){if(!managing&&started)revealChrome();return super.dispatchTouchEvent(event);}
@@ -862,8 +871,8 @@ public final class MainActivity extends Activity {
                     showConnectionTest(new Camera(candidate.prefix + " " + candidate.first, candidate.url(candidate.first, false), candidate.url(candidate.first, true)), () -> {
                         try {
                             candidate.apply(current);
+                            if(!locations.contains(current)||current.defaultGrid!=selectedDefault)current.grid=selectedDefault;
                             current.name=locationName;current.defaultGrid=selectedDefault;
-                            current.grid=selectedDefault;
                             if(!locations.contains(current))locations.add(current);
                             if (persist()) { managing = true; finishRecorderEditor(true); }
                         } catch (IllegalArgumentException e) { toast(validationMessage(e)); }

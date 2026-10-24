@@ -125,7 +125,9 @@ public final class SubstreamWorkflowTest {
         requireFixture();
         try(var s=ActivityScenario.launch(MainActivity.class)){
             s.onActivity(a->{try{fixture(a,6);((ArrayList<Location>)get(a,"locations")).add((Location)get(a,"current"));
-                ((View)get(a,"layoutControl")).requestFocus();}catch(Exception e){throw new AssertionError(e);}});
+            }catch(Exception e){throw new AssertionError(e);}});
+            awaitFocus(s);remoteKey(android.view.KeyEvent.KEYCODE_DPAD_UP);
+            s.onActivity(a->{try{assertTrue("Real remote Up must focus the layout control before the idle check",((View)get(a,"layoutControl")).hasFocus());}catch(Exception e){throw new AssertionError(e);}});
             android.os.SystemClock.sleep(4300);
             s.onActivity(a->{try{assertTrue((Boolean)get(a,"chromeVisible"));assertEquals(View.VISIBLE,((View)get(a,"viewingBar")).getVisibility());}catch(Exception e){throw new AssertionError(e);}});
             for(int key:new int[]{android.view.KeyEvent.KEYCODE_DPAD_LEFT,android.view.KeyEvent.KEYCODE_DPAD_RIGHT}){
@@ -139,6 +141,130 @@ public final class SubstreamWorkflowTest {
                     assertEquals(-1,get(a,"fullscreen"));assertFalse((Boolean)get(a,"managing"));showing.dismiss();
                 }catch(Exception e){throw new AssertionError(e);}});
             }
+        }
+    }
+    private static void remoteKey(int key) {
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(key);
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+    }
+    private static void holdRemoteOk() {
+        var instrumentation=InstrumentationRegistry.getInstrumentation();
+        long down=android.os.SystemClock.uptimeMillis();
+        instrumentation.sendKeySync(new android.view.KeyEvent(down,down,android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_DPAD_CENTER,0));
+        android.os.SystemClock.sleep(1150);
+        instrumentation.sendKeySync(new android.view.KeyEvent(down,android.os.SystemClock.uptimeMillis(),android.view.KeyEvent.ACTION_UP,android.view.KeyEvent.KEYCODE_DPAD_CENTER,0));
+        instrumentation.waitForIdleSync();
+    }
+    private void assertEmptyRemoteRecovery(boolean allHidden) throws Exception {
+        requireFixture();
+        try(var s=ActivityScenario.launch(MainActivity.class)) {
+            s.onActivity(a->{try{
+                if(allHidden){fixture(a,6);Location l=(Location)get(a,"current");for(Camera c:l.cameras)c.hidden=true;}
+                call(a,"render");
+            }catch(Exception e){throw new AssertionError(e);}});
+            awaitFocus(s);
+            for(int escape:new int[]{android.view.KeyEvent.KEYCODE_DPAD_DOWN,android.view.KeyEvent.KEYCODE_BACK}) {
+                remoteKey(android.view.KeyEvent.KEYCODE_DPAD_UP);
+                s.onActivity(a->{try{assertTrue("Up must reach the toolbar",((View)get(a,"viewingBar")).hasFocus());}catch(Exception e){throw new AssertionError(e);}});
+                remoteKey(escape);
+                s.onActivity(a->{try{assertFalse("Down/Back must leave the toolbar even without visible cameras",((View)get(a,"viewingBar")).hasFocus());}catch(Exception e){throw new AssertionError(e);}});
+                holdRemoteOk();
+                s.onActivity(a->{try{
+                    assertNotNull("Hold OK after toolbar escape must open viewing menu",get(a,"viewingMenu"));
+                    assertTrue(((AlertDialog)get(a,"viewingMenu")).isShowing());assertEquals(-1,get(a,"fullscreen"));
+                }catch(Exception e){throw new AssertionError(e);}});
+                remoteKey(android.view.KeyEvent.KEYCODE_BACK);awaitFocus(s);
+            }
+        }
+    }
+    @Test public void zeroLocationsRemoteDownAndBackRestoreHoldOkMenu() throws Exception { assertEmptyRemoteRecovery(false); }
+    @Test public void allHiddenRemoteDownAndBackRestoreHoldOkMenu() throws Exception { assertEmptyRemoteRecovery(true); }
+    private static void editRecorder(MainActivity a,Nvr existing) throws Exception {
+        var edit=MainActivity.class.getDeclaredMethod("editNvr",Nvr.class,CameraRules.Preset.class);
+        edit.setAccessible(true);edit.invoke(a,existing,CameraRules.Preset.HIKVISION);
+    }
+    /** UI callback contract fake only; real rendered SUB frames are covered by InBandPlaybackTest. */
+    private static void saveRecorderAfterUiFrameCallback(MainActivity a) throws Exception {
+        ((AlertDialog)get(a,"recorderEditor")).getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        AlertDialog preview=(AlertDialog)get(a,"connectionPreview");
+        assertNotNull(preview);assertFalse("Save must require the SUB frame callback",preview.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled());
+        StreamTile tile=(StreamTile)((ArrayList<?>)get(a,"streams")).get(0);
+        tile.release(); // Cancel invalid-port transport before the UI-only callback contract fake.
+        ((StreamTile.Listener)get(tile,"listener")).onFirstFrame();
+        assertTrue(preview.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled());
+        preview.getButton(AlertDialog.BUTTON_POSITIVE).performClick();assertNull(get(a,"recorderEditor"));
+    }
+    private void assertExistingRecorderGrid(boolean changeDefault) throws Exception {
+        requireFixture();var store=new ProfileStore(InstrumentationRegistry.getInstrumentation().getTargetContext());
+        try(var s=ActivityScenario.launch(MainActivity.class)) {
+            s.onActivity(a->{try {
+                fixture(a,6);Location l=(Location)get(a,"current");l.defaultGrid=4;l.cameras.clear();
+                Nvr n=new Nvr();n.host="127.0.0.1";n.port=9;n.count=8;n.password="old-test-password";n.apply(l);
+                ((ArrayList<Location>)get(a,"locations")).add(l);store.save(java.util.List.of(l));call(a,"enterTechnician");editRecorder(a,n);
+                ((android.widget.EditText)get(a,"recorderLocationName")).setText("Renamed location");
+                ((android.widget.EditText[])get(a,"recorderFields"))[4].setText("replacement-test-password");
+                if(changeDefault)((android.widget.Spinner)get(a,"recorderDefaultGrid")).setSelection(3);
+                saveRecorderAfterUiFrameCallback(a);Location saved=store.load().get(0);
+                assertEquals("Renamed location",saved.name);assertEquals("replacement-test-password",saved.devices.get(0).password);
+                assertEquals(changeDefault?8:4,saved.defaultGrid);
+                assertEquals("Unrelated edits preserve runtime layout; an explicit default change applies it",changeDefault?8:6,saved.grid);
+                stopUiFixturePlayers(a);
+            }catch(Exception e){throw new AssertionError(e);}});
+        }
+    }
+    @Test public void unrelatedRecorderEditsPreserveSavedRuntimeGrid() throws Exception { assertExistingRecorderGrid(false); }
+    @Test public void explicitRecorderDefaultChangeAppliesNewGrid() throws Exception { assertExistingRecorderGrid(true); }
+    @Test public void freshLocationInitializesRuntimeGridFromChosenDefault() throws Exception {
+        requireFixture();var store=new ProfileStore(InstrumentationRegistry.getInstrumentation().getTargetContext());
+        try(var s=ActivityScenario.launch(MainActivity.class)) {
+            s.onActivity(a->{try {
+                call(a,"enterTechnician");
+                var current=MainActivity.class.getDeclaredField("current");current.setAccessible(true);current.set(a,new Location("New location"));editRecorder(a,null);
+                ((android.widget.EditText[])get(a,"recorderFields"))[1].setText("127.0.0.1");
+                ((android.widget.EditText[])get(a,"recorderFields"))[2].setText("9");
+                ((android.widget.Spinner)get(a,"recorderDefaultGrid")).setSelection(2);
+                saveRecorderAfterUiFrameCallback(a);Location saved=store.load().get(0);
+                assertEquals(6,saved.defaultGrid);assertEquals(6,saved.grid);stopUiFixturePlayers(a);
+            }catch(Exception e){throw new AssertionError(e);}});
+        }
+    }
+    private static void awaitLifecycle(ActivityScenario<MainActivity> scenario,androidx.lifecycle.Lifecycle.State state) {
+        long end=android.os.SystemClock.uptimeMillis()+5000;
+        do{if(scenario.getState()==state)return;android.os.SystemClock.sleep(25);}while(android.os.SystemClock.uptimeMillis()<end);
+        assertEquals("Real Home/return must reach expected lifecycle",state,scenario.getState());
+    }
+    @Test public void backgroundArrangementCancelRestoresVisibleCameraIdentityAndPage() throws Exception {
+        requireFixture();var store=new ProfileStore(InstrumentationRegistry.getInstrumentation().getTargetContext());String[] ids=new String[8];
+        MainActivity[] original=new MainActivity[1];
+        try(var s=ActivityScenario.launch(MainActivity.class)) {
+            s.onActivity(a->{try {
+                original[0]=a;
+                fixture(a,4);Location l=(Location)get(a,"current");for(int i=0;i<8;i++)ids[i]=l.cameras.get(i).id;
+                l.cameras.get(1).hidden=true;l.cameras.get(3).hidden=true;l.lastCameraId=ids[7];l.lastPage=1;
+                ((ArrayList<Location>)get(a,"locations")).add(l);
+                var selected=MainActivity.class.getDeclaredField("focusedCamera");selected.setAccessible(true);selected.setInt(a,5);
+                var page=MainActivity.class.getDeclaredField("page");page.setAccessible(true);page.setInt(a,1);
+                call(a,"render");store.save(java.util.List.of(l));call(a,"enterTechnician");
+                a.getWindow().getDecorView().findViewWithTag("manage-channels").performClick();
+                ((View)((ArrayList<?>)get(a,"tileViews")).get(0)).performClick();
+                ((View)((ArrayList<?>)get(a,"tileViews")).get(1)).performClick();call(a,"toggleSelectedHidden");
+                assertEquals("Staging must not write profiles",ids[0],store.load().get(0).cameras.get(0).id);
+                assertEquals(ids[7],store.load().get(0).lastCameraId);stopUiFixturePlayers(a);
+            }catch(Exception e){throw new AssertionError(e);}});
+            assertTrue(androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressHome());
+            awaitLifecycle(s,androidx.lifecycle.Lifecycle.State.CREATED);Location saved=store.load().get(0);
+            assertEquals("Background cancellation must preserve the normal selected identity",ids[7],saved.lastCameraId);assertEquals(1,saved.lastPage);
+            for(int i=0;i<8;i++){assertEquals(ids[i],saved.cameras.get(i).id);assertEquals(i==1||i==3,saved.cameras.get(i).hidden);}
+            var context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+            context.startActivity(new android.content.Intent(context,MainActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                    |android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP|android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+            awaitLifecycle(s,androidx.lifecycle.Lifecycle.State.RESUMED);awaitFocus(s);
+            s.onActivity(a->{try {
+                assertSame("Home return must reuse the same Activity",original[0],a);
+                assertFalse((Boolean)get(a,"arranging"));assertFalse((Boolean)get(a,"technician"));
+                assertEquals(5,get(a,"focusedCamera"));assertEquals(1,get(a,"page"));
+                assertTrue(((View)((ArrayList<?>)get(a,"tileViews")).get(1)).hasFocus());stopUiFixturePlayers(a);
+            }catch(Exception e){throw new AssertionError(e);}});
         }
     }
     @Test public void phoneSetupRequiresActualTvSubstreamAndRejectsCustomCamera() throws Exception {
