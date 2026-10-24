@@ -12,28 +12,30 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.11.1'
+      - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - name: Install pinned Android SDK
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - name: Check core behavior
         run: |
           bash scripts/check-core.sh
+          bash scripts/check-digest.sh
           bash scripts/check-updates.sh
+          python3 -m unittest discover -s scripts/tests -v
       - name: Load retained release signing key
+        if: github.event_name != 'pull_request'
         env:
           CCTV_SIGNING_BUNDLE: ${{ secrets.CCTV_SIGNING_BUNDLE }}
         run: |
@@ -55,7 +57,7 @@ jobs:
                   f.write(f'CCTV_KEYSTORE_PATH={path}\nCCTV_STORE_PASSWORD={password}\nCCTV_KEY_ALIAS={alias}\n')
           PYCODE
       - name: Test, lint, and build
-        run: gradle --no-daemon testDebugUnitTest lintDebug assembleDebug assembleRelease assembleDebugAndroidTest
+        run: bash ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug assembleRelease assembleDebugAndroidTest
       - name: Collect APKs
         run: |
           mkdir -p dist
@@ -66,13 +68,13 @@ jobs:
             cp app/build/outputs/apk/release/app-release-unsigned.apk dist/cctv-release-unsigned.apk
           fi
           sha256sum dist/*.apk > dist/SHA256SUMS
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cctv-tv-apks
           path: dist/
           if-no-files-found: error
           retention-days: 30
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ui-test-apks
           path: |
@@ -82,26 +84,28 @@ jobs:
       - name: Remove signing material
         if: always()
         run: rm -f "$RUNNER_TEMP/cctv-release.p12"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: test-and-lint-results
           path: |
             app/build/reports/
             app/build/test-results/
+            rtsp-compat/build/reports/
+            rtsp-compat/build/test-results/
           if-no-files-found: ignore
 
   ui-smoke:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '17'
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ui-test-apks
           path: test-apks
@@ -110,18 +114,71 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - uses: reactivecircus/android-emulator-runner@v2
+      - uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
-          api-level: 30
-          target: google_apis
+          api-level: 28
+          profile: tv_1080p
+          target: default
           arch: x86_64
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -skin 1920x1080 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: bash scripts/ui-smoke.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: native-ui-screenshots
           path: ui-results/
           if-no-files-found: ignore
           retention-days: 30
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, ui-smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - name: Install pinned verification tools
+        run: sdkmanager 'build-tools;35.0.0'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cctv-tv-apks
+          path: dist
+      - name: Verify signed release candidate
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 scripts/prepare-release.py --apk dist/cctv-release.apk --tag "$RELEASE_TAG" --output release --build-tools "$ANDROID_HOME/build-tools/35.0.0" > release-metadata.json
+          cat release-metadata.json
+      - name: Publish verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          cat > release-notes.md <<'NOTES'
+          CCTV for Android TV and Google TV. Install **cctv-release.apk**; verify it with SHA256SUMS.
+
+          Mi Box remotes without Menu: hold OK for one second for viewing options; choose Settings (ตั้งค่า) in that menu, then confirm, for technician setup. Back closes normally. Short OK/Back retain camera navigation. This candidate corrects HEVC keyframe classification for recorders with shifted continuation-fragment headers; synthetic decoder checks cover that packet pattern with and without SDP codec parameters. It also includes automatic codec labels and separate technician substream/mainstream picture tests. Synthetic H.264 substream/H.265 main pairs cover Hikvision, VIGI NVR and VIGI camera paths. Unused audio/application SDP is ignored before video validation. Saving still requires a decoded substream. H.265+ smart encoding must be checked on the actual device; it appears as HEVC. It includes Thai viewing controls, a borderless idle camera grid, protected technician settings, and corrected remembered-camera paging. See CHANGELOG.md at this tag for details.
+
+          Automated build, unit, lint and native TV checks passed before publication. Physical Hikvision/Mi Box playback, all 11 channels, decoder capacity, and in-place updates preserving profiles still require owner-device verification. This is a release candidate until those checks pass.
+
+          The package and retained signing certificate are unchanged. Third-party notices accompany the APK and are bundled inside it. The separate legacy updater feed is unchanged.
+          NOTES
+          assets=(release/cctv-release.apk release/SHA256SUMS release/THIRD_PARTY_NOTICES.md release/APACHE-2.0.txt)
+          if [ -f release/LICENSE ]; then assets+=(release/LICENSE); fi
+          flags=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then flags+=(--prerelease --latest=false); fi
+          gh release create "$RELEASE_TAG" "${assets[@]}" --verify-tag --title "CCTV $RELEASE_TAG" --notes-file release-notes.md "${flags[@]}"

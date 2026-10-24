@@ -1,0 +1,14 @@
+Media3 RTSP 1.8.0 vendored from the official Google Maven sources JAR.
+Source SHA-256: a8cf8fed25cc02ba3d385c9e262718d742c10a177ea923a57dcb756f65add0ca
+Apache-2.0; individual upstream file notices retained.
+CCTV modifications: video-only SDP track selection; allow absent H264 parameter sets; bounded RFC6184 depacketization into the existing Media3 H264 elementary-stream reader for actual in-band SPS/PPS initialization. No native fallback dependency. H265 without SDP configuration discovers real in-band VPS/SPS/PPS with equivalent bounds; nonzero decoding-order fields remain unsupported.
+
+The MediaPeriod starts the real RTSP session before preparation only when H264 or H265 requires in-band configuration; SETUP is issued once per transport. Internal classes opt in to the Media3 UnstableApi contract. No upstream dependency versions are upgraded.
+
+The elementary-stream reader is a format-discovery probe only; its samples are discarded. A bounded 4 MiB startup cache is replayed through upstream RtpH264Reader after real SPS/PPS are found, preserving RTP marker access-unit boundaries. The existing out-of-band configuration path is unchanged.
+
+HEVC discovery follows RFC7798 single NAL/AP/FU without DONL: https://www.rfc-editor.org/rfc/rfc7798.html. Parameter sets are read through Media3 H265Reader; original RTP is replayed through RtpH265Reader after a real format is known. Synthetic inband.h265 was generated using FFmpeg/libx265 testsrc2 (320x180, 5fps, ten frames, yuv420p, keyint=5, repeat-headers=1, aud=1); it contains no camera footage.
+
+The SDP parser skips non-video sections before building media descriptions, including unused dynamic/multi-format audio and vendor application metadata. Video validation remains strict; this patch does not implement multi-payload video negotiation. See docs/COMPATIBILITY.md for vendor references and tested scope.
+
+RtpH265Reader is locally modified to latch key status from the first FU fragment, tolerate observed shifted continuation FuType values without changing coded bytes, accumulate flags within an RTP-marker-delimited picture, reset flags between pictures/on seek, and classify defined IRAP types16-21. Synthetic tests cover the observed IDR19-to-continuation38 packet headers, without private footage. Both in-band and out-of-band HEVC use this reader.

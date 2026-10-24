@@ -24,6 +24,7 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 /** One visible stream; no offscreen player, no preview network requests, bounded retry. */
 @UnstableApi
 public final class StreamTile extends FrameLayout {
+    private static final String STATS_TAG = "CCTVPlayback";
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final SurfaceView surface;
     private final TextView status;
@@ -56,16 +57,25 @@ public final class StreamTile extends FrameLayout {
         surface = new SurfaceView(context);
         surface.setFocusable(false);
         addView(surface, new LayoutParams(-1, -1));
-        status = label("Connecting…", 12);
+        status = label(context.getString(R.string.common_connecting), 12);
         status.setMaxLines(main ? 3 : 2); status.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LayoutParams state = new LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
         state.setMargins(dp(8), dp(8), dp(8), 0);
         addView(status, state);
-        title = label(camera.name + (main ? "   •   MAIN" : "   •   SUB"), main ? 18 : 13);
+        title = label(context.getString(main ? R.string.common_stream_main : R.string.common_stream_sub, camera.name), main ? 18 : 13);
         title.setSingleLine(true); title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LayoutParams caption = new LayoutParams(-1, -2, Gravity.BOTTOM);
         addView(title, caption);
-        setContentDescription(camera.name + (main ? ", mainstream fullscreen" : ", press OK to view mainstream, hold OK for options"));
+        setContentDescription(context.getString(main ? R.string.common_stream_fullscreen_description : R.string.common_stream_grid_description, camera.name));
+    }
+
+    /** Actual decoder format, queried after a rendered frame; never an encoder override. */
+    public String detectedVideoCodec() {
+        androidx.media3.common.Format format = player == null ? null : player.getVideoFormat();
+        String mime = format == null ? null : format.sampleMimeType;
+        if (androidx.media3.common.MimeTypes.VIDEO_H264.equals(mime)) return "H.264";
+        if (androidx.media3.common.MimeTypes.VIDEO_H265.equals(mime)) return "H.265 / HEVC";
+        return getContext().getString(R.string.tv_codec_other);
     }
 
     private int dp(int x) { return Math.round(x * getResources().getDisplayMetrics().density); }
@@ -84,7 +94,7 @@ public final class StreamTile extends FrameLayout {
         if (released) return;
         releasePlayer();
         final int token = ++generation;
-        status.setVisibility(VISIBLE); status.setText("Connecting…");
+        status.setVisibility(VISIBLE); status.setText(R.string.common_connecting);
         try {
             DefaultTrackSelector selector = new DefaultTrackSelector(getContext());
             selector.setParameters(selector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
@@ -106,6 +116,7 @@ public final class StreamTile extends FrameLayout {
                 @Override public void onRenderedFirstFrame() {
                     if (!current()) return;
                     failures = 0; status.setVisibility(GONE);
+                    logPlaybackStats("first-frame");
                     if (listener != null) listener.onFirstFrame();
                 }
                 @Override public void onVideoSizeChanged(VideoSize size) {
@@ -116,9 +127,11 @@ public final class StreamTile extends FrameLayout {
                 }
                 @Override public void onPlayerError(PlaybackException error) {
                     if (!current()) return;
+                    logPlaybackStats("error-" + error.errorCode);
                     fail(PlaybackFailure.classify(error, error.errorCode));
                 }
                 @Override public void onPlaybackStateChanged(int state) {
+                    if (current()) logPlaybackStats("state-" + state);
                     if (current() && state == Player.STATE_ENDED) fail(PlaybackFailure.NETWORK);
                 }
             });
@@ -135,6 +148,7 @@ public final class StreamTile extends FrameLayout {
 
     private void watchdog(int token) {
         if (released || token != generation) return;
+        logPlaybackStats("watchdog");
         if (SystemClock.elapsedRealtime() - lastFrame > (main ? 12000 : 25000)) { fail(PlaybackFailure.TIMEOUT); return; }
         handler.postDelayed(() -> watchdog(token), 5000);
     }
@@ -143,9 +157,9 @@ public final class StreamTile extends FrameLayout {
         if (released) return;
         if (listener != null) listener.onFailure(reason);
         if (released) return;
-        if (autoRetry && reason.retry) { retry(reason.message); return; }
+        if (autoRetry && reason.retry) { retry(UiText.playback(getContext(), reason)); return; }
         generation++; handler.removeCallbacksAndMessages(null); releasePlayer();
-        status.setVisibility(VISIBLE); status.setText(reason.message);
+        status.setVisibility(VISIBLE); status.setText(UiText.playback(getContext(), reason));
     }
 
     private void retry(String reason) {
@@ -155,12 +169,35 @@ public final class StreamTile extends FrameLayout {
         releasePlayer();
         long delay = Math.min(30000, 2000L << Math.min(failures++, 4));
         status.setVisibility(VISIBLE);
-        status.setText(reason + " • retry in " + delay / 1000 + "s");
+        status.setText(getContext().getString(R.string.common_stream_retry, reason, delay / 1000));
         handler.postDelayed(this::connect, delay);
     }
 
     private void releasePlayer() {
-        if (player != null) { player.clearVideoSurface(); player.release(); player = null; }
+        if (player != null) { logPlaybackStats("release"); player.clearVideoSurface(); player.release(); player = null; }
+    }
+
+    /** Opt-in ADB diagnostics: aggregate counters only, never names, URLs or credentials. */
+    private void logPlaybackStats(String event) {
+        if (player == null || !android.util.Log.isLoggable(STATS_TAG, android.util.Log.DEBUG)) return;
+        androidx.media3.common.Format format = player.getVideoFormat();
+        androidx.media3.exoplayer.DecoderCounters counters = player.getVideoDecoderCounters();
+        if (counters == null) return;
+        counters.ensureUpdated();
+        android.util.Log.d(STATS_TAG, "event=" + event + " kind=" + (main ? "MAIN" : "SUB")
+                + " atMs=" + SystemClock.elapsedRealtime() + " state=" + player.getPlaybackState()
+                + " posMs=" + player.getCurrentPosition()
+                + " bufferMs=" + Math.max(0, player.getBufferedPosition() - player.getCurrentPosition())
+                + " size=" + (format == null ? "unknown" : format.width + "x" + format.height)
+                + " fps=" + (format == null ? -1 : format.frameRate)
+                + " queued=" + counters.queuedInputBufferCount
+                + " rendered=" + counters.renderedOutputBufferCount
+                + " dropped=" + counters.droppedBufferCount
+                + " skipped=" + counters.skippedOutputBufferCount
+                + " keyDrops=" + counters.droppedToKeyframeCount
+                + " maxDropRun=" + counters.maxConsecutiveDroppedBufferCount
+                + " offsetUs=" + counters.totalVideoFrameProcessingOffsetUs
+                + " offsetCount=" + counters.videoFrameProcessingOffsetCount);
     }
 
     public void release() {
