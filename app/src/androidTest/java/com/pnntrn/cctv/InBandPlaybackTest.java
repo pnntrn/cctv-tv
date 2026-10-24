@@ -91,9 +91,10 @@ public final class InBandPlaybackTest {
     @Test public void hevcOutOfBandControlDecodesTheSameSyntheticVideo() throws Exception { play(true, false, true); }
     @Test public void missingFmtpDecodesFirstFrameFromInterleavedInBandH265() throws Exception { play(false, false, true); }
     @Test public void missingFmtpHevcFullscreenDecodesAndReleases() throws Exception { play(false, true, true); }
-    @Test public void vlcH264MainstreamWithFmtpDecodesAndClosesConnection() throws Exception { play(true, true, false); }
-    @Test public void vlcHevcMainstreamWithFmtpDecodesAndClosesConnection() throws Exception { play(true, true, true); }
-    @Test public void vlcFailedConnectionKeepsCredentialsOutOfUiAndLogs() throws Exception {
+    @Test public void requestedMainFlagStillDecodesH264Substream() throws Exception { play(true, true, false); }
+    @Test public void requestedMainFlagStillDecodesHevcSubstream() throws Exception { play(true, true, true); }
+    @Test public void requestedMainFlagIgnoresInvalidMainUri() throws Exception { play(false, true, false, false, true); }
+    @Test public void failedSubstreamKeepsCredentialsOutOfUiAndLogs() throws Exception {
         var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         assertTrue("Use a clean emulator fixture", new ProfileStore(context).load().isEmpty());
         assertTrue(android.os.Build.FINGERPRINT.contains("generic") || android.os.Build.HARDWARE.contains("ranchu") || android.os.Build.HARDWARE.contains("goldfish"));
@@ -105,10 +106,11 @@ public final class InBandPlaybackTest {
         CountDownLatch failed = new CountDownLatch(1);
         java.util.concurrent.atomic.AtomicBoolean rendered = new java.util.concurrent.atomic.AtomicBoolean();
         AtomicReference<StreamTile> tile = new AtomicReference<>();
-        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+        try (LoopbackRtspServer unusedMain = new LoopbackRtspServer(fixture(false), true, false);
+             ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             scenario.onActivity(activity -> {
                 FrameLayout content = new FrameLayout(activity); activity.setContentView(content);
-                StreamTile stream = new StreamTile(activity, new Camera("Synthetic failure", address, address), true, true);
+                StreamTile stream = new StreamTile(activity, new Camera("Synthetic failure", address, unusedMain.url()), true, true);
                 tile.set(stream); stream.setAutoRetry(false);
                 stream.setListener(new StreamTile.Listener() {
                     @Override public void onFirstFrame() { rendered.set(true); }
@@ -116,17 +118,18 @@ public final class InBandPlaybackTest {
                 });
                 content.addView(stream, new FrameLayout.LayoutParams(-1, -1)); stream.start(0);
             });
-            assertTrue("Unreachable MAIN must report failure", failed.await(20, TimeUnit.SECONDS));
+            assertTrue("Unreachable SUB must report failure", failed.await(20, TimeUnit.SECONDS));
             assertFalse("A connection event must never count as a picture", rendered.get());
+            assertEquals("A failed SUB must never fall back to saved MAIN", 0, unusedMain.acceptedConnections);
             scenario.onActivity(activity -> {
                 assertFalse(((android.widget.TextView)tile.get().getChildAt(1)).getText().toString().contains(secret));
                 tile.get().release();
+                try { assertNull("Failed player must release Media3", privateField(tile.get(), "player")); }
+                catch (Exception e) { throw new AssertionError(e); }
             });
             String logs = device.executeShellCommand("logcat -d --pid=" + android.os.Process.myPid());
             assertFalse("Native/player logs must not disclose credentials", logs.contains(secret));
-            java.lang.reflect.Field references = VlcStreamPlayer.class.getDeclaredField("sharedLibVlcReferences");
-            references.setAccessible(true);
-            assertEquals("Failed player must release its shared engine reference", 0, references.getInt(null));
+            assertFalse("Native/player logs must not disclose the authenticated URI", logs.contains(address));
         } finally {
             InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
                 if (tile.get() != null) tile.get().release();
@@ -140,6 +143,9 @@ public final class InBandPlaybackTest {
         play(withFmtp, fullscreen, hevc, false);
     }
     private void play(boolean withFmtp, boolean fullscreen, boolean hevc, boolean shiftedHevcFu) throws Exception {
+        play(withFmtp, fullscreen, hevc, shiftedHevcFu, false);
+    }
+    private void play(boolean withFmtp, boolean fullscreen, boolean hevc, boolean shiftedHevcFu, boolean invalidMain) throws Exception {
         // Fail before launching: MainActivity automatically starts saved cameras. Use a clean
         // instrumentation install; never overwrite profiles or contact a configured camera.
         assertTrue("Run on a clean test install with no saved locations",
@@ -158,14 +164,15 @@ public final class InBandPlaybackTest {
         AtomicReference<PlaybackFailure> failure = new AtomicReference<>();
         AtomicReference<String> diagnostics = new AtomicReference<>("no failure callback");
         AtomicReference<StreamTile> tile = new AtomicReference<>();
-        try (LoopbackRtspServer server = new LoopbackRtspServer(fixture, withFmtp, hevc)) {
+        try (LoopbackRtspServer server = new LoopbackRtspServer(fixture, withFmtp, hevc);
+             LoopbackRtspServer unusedMain = new LoopbackRtspServer(fixture(!hevc), true, !hevc)) {
             server.shiftedHevcFu = shiftedHevcFu;
             try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
                 scenario.onActivity(activity -> {
                     FrameLayout content = new FrameLayout(activity);
                     activity.setContentView(content);
                     StreamTile stream = new StreamTile(activity,
-                            new Camera("Synthetic in-band fixture", server.url(), server.url()),
+                            new Camera("Synthetic in-band fixture", server.url(), invalidMain ? "invalid-unused-main" : unusedMain.url()),
                             fullscreen, true);
                     tile.set(stream);
                     android.view.SurfaceView videoSurface=(android.view.SurfaceView)stream.getChildAt(0);
@@ -203,7 +210,7 @@ public final class InBandPlaybackTest {
                     stream.start(0);
                 });
                 assertTrue("Native video Surface must be created on the physical TV display",surfaceReady.await(5,TimeUnit.SECONDS));
-                // Only rendered-frame evidence from the selected engine can satisfy this latch.
+                // Only Media3 rendered-frame evidence can satisfy this latch.
                 // OPTIONS, DESCRIBE, SETUP and PLAY responses alone must never pass the test.
                 boolean rendered = firstFrame.await(30, TimeUnit.SECONDS);
                 assertTrue("No decoded frame in 30s; fmtp="+withFmtp+"; playback=" + failure.get()
@@ -213,9 +220,9 @@ public final class InBandPlaybackTest {
                 scenario.onActivity(activity -> { try {
                     StreamTile active = tile.get();
                     assertEquals(hevc ? "H.265 / HEVC" : "H.264", active.detectedVideoCodec());
-                    assertEquals("MAIN must use the compatibility engine", fullscreen,
-                            privateField(active, "vlc") != null);
+                    assertNotNull("All viewing modes must use Media3", privateField(active, "player"));
                 } catch (Exception e) { throw new AssertionError(e); } });
+                assertEquals("Saved MAIN must never be contacted", 0, unusedMain.acceptedConnections);
                 assertNull("Loopback server failed", server.failure.get());
                 assertTrue("Expected single-NAL RTP packets", server.singleNalPackets > 0);
                 assertTrue("Expected fragmented RTP packets", server.fuPackets > 0);
@@ -223,6 +230,7 @@ public final class InBandPlaybackTest {
                 InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> tile.get().release());
                 server.control.join(2000);
                 assertFalse("Releasing the tile must close its live RTSP connection",server.control.isAlive());
+                assertNull("Intentional release must not hide unexpected server failures", server.failure.get());
             } finally {
                 // Also runs if launch/onActivity/assertion/ActivityScenario.close throws.
                 InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
@@ -233,9 +241,9 @@ public final class InBandPlaybackTest {
         }
     }
 
-    @Test public void hikvisionMixedCodecTechnicianChecksBothStreams() throws Exception { checkBothStreams(CameraRules.Preset.HIKVISION); }
-    @Test public void vigiNvrMixedCodecTechnicianChecksBothStreams() throws Exception { checkBothStreams(CameraRules.Preset.VIGI_NVR); }
-    @Test public void vigiCameraMixedCodecTechnicianChecksBothStreams() throws Exception { checkBothStreams(CameraRules.Preset.VIGI_CAMERA); }
+    @Test public void hikvisionTechnicianDecodesOnlySubstream() throws Exception { checkSubstream(CameraRules.Preset.HIKVISION); }
+    @Test public void vigiNvrTechnicianDecodesOnlySubstream() throws Exception { checkSubstream(CameraRules.Preset.VIGI_NVR); }
+    @Test public void vigiCameraTechnicianDecodesOnlySubstream() throws Exception { checkSubstream(CameraRules.Preset.VIGI_CAMERA); }
     private static byte[] fixture(boolean hevc) throws Exception {
         try (InputStream in = InstrumentationRegistry.getInstrumentation().getContext().getAssets().open(hevc ? "inband.h265" : "inband.h264")) {
             ByteArrayOutputStream out = new ByteArrayOutputStream(); byte[] buffer = new byte[4096]; int count;
@@ -246,26 +254,25 @@ public final class InBandPlaybackTest {
     private static Object privateField(Object owner, String name) throws Exception {
         java.lang.reflect.Field field = owner.getClass().getDeclaredField(name); field.setAccessible(true); return field.get(owner);
     }
-    private void awaitPreviewFocus(ActivityScenario<MainActivity> scenario, boolean mainButton) {
+    private void awaitPreviewFocus(ActivityScenario<MainActivity> scenario) {
         long deadline = android.os.SystemClock.uptimeMillis() + 5000;
         boolean[] ready = {false}; String[] state = {"no Activity callback"};
         do {
             scenario.onActivity(activity -> { try {
                 android.app.AlertDialog dialog = (android.app.AlertDialog)privateField(activity,"connectionPreview");
                 View decor = dialog == null ? null : dialog.getWindow().getDecorView();
-                View main = decor == null ? null : decor.findViewWithTag("stream-test-main");
                 ready[0] = dialog != null && dialog.isShowing() && decor.hasWindowFocus()
-                        && (!mainButton || (main != null && main.hasFocus()));
+                        && decor.findViewWithTag("stream-test-sub") != null;
                 state[0] = "activityFocus=" + activity.hasWindowFocus() + ", dialog=" + (dialog != null && dialog.isShowing())
                         + ", windowFocus=" + (decor != null && decor.hasWindowFocus()) + ", touchMode=" + (decor != null && decor.isInTouchMode())
-                        + ", mainFocus=" + (main != null && main.hasFocus());
+                        + ", subControl=" + (decor != null && decor.findViewWithTag("stream-test-sub") != null);
             } catch (Exception e) { throw new AssertionError(e); } });
             if (ready[0]) return;
             android.os.SystemClock.sleep(25);
         } while (android.os.SystemClock.uptimeMillis() < deadline);
-        fail("Expected preview " + (mainButton ? "main-button" : "window") + " focus within 5s; " + state[0]);
+        fail("Expected substream preview window focus within 5s; " + state[0]);
     }
-    private void checkBothStreams(CameraRules.Preset preset) throws Exception {
+    private void checkSubstream(CameraRules.Preset preset) throws Exception {
         var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         assertTrue("Only clean synthetic fixture installs may run this test", new ProfileStore(context).load().isEmpty());
         assertTrue(android.os.Build.FINGERPRINT.contains("generic") || android.os.Build.HARDWARE.contains("ranchu") || android.os.Build.HARDWARE.contains("goldfish"));
@@ -283,10 +290,15 @@ public final class InBandPlaybackTest {
                 java.lang.reflect.Method preview = MainActivity.class.getDeclaredMethod("showConnectionTest", Camera.class, Runnable.class);
                 preview.setAccessible(true);
                 preview.invoke(activity, new Camera("Synthetic mixed codecs", sub.url(), main.url()), (Runnable)saved::incrementAndGet);
+                android.app.AlertDialog dialog = (android.app.AlertDialog)privateField(activity,"connectionPreview");
+                assertFalse("Saving requires an actual decoded SUB frame", dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).isEnabled());
+                View decor = dialog.getWindow().getDecorView();
+                assertNull("Technician must not offer MAIN playback", decor.findViewWithTag("stream-test-main"));
+                assertNull("Technician must not offer a MAIN result", decor.findViewWithTag("stream-result-main"));
             } catch (Exception e) { throw new AssertionError(e); } });
             var device = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
             assertTrue("Substream must actually decode H.264", device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.textContains("H.264")), 30000));
-            awaitPreviewFocus(scenario, false);
+            awaitPreviewFocus(scenario);
             device.pressDPadDown(); // Establish remote navigation mode before setting the gesture's starting focus.
             scenario.onActivity(activity -> { try {
                 android.app.AlertDialog dialog = (android.app.AlertDialog)privateField(activity,"connectionPreview");
@@ -299,24 +311,15 @@ public final class InBandPlaybackTest {
             } catch (Exception e) { throw new AssertionError(e); } });
             device.waitForIdle();
             if (preset == CameraRules.Preset.HIKVISION) assertTrue(device.takeScreenshot(new java.io.File(context.getFilesDir(),"ui-codec-sub.png")));
-            awaitPreviewFocus(scenario, false);
-            device.pressDPadRight();
-            awaitPreviewFocus(scenario, true);
-            sub.expectClientDisconnect = true;
-            device.pressDPadCenter();
-            assertTrue("Mainstream must actually decode HEVC", device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.textContains("H.265 / HEVC")), 30000));
-            sub.control.join(2000);
-            assertFalse("Switching tests must close the old substream connection", sub.control.isAlive());
             scenario.onActivity(activity -> { try {
                 android.app.AlertDialog dialog = (android.app.AlertDialog)privateField(activity,"connectionPreview");
                 View decor = dialog.getWindow().getDecorView();
                 assertTrue(((android.widget.TextView)decor.findViewWithTag("stream-result-sub")).getText().toString().contains("H.264"));
-                assertTrue(((android.widget.TextView)decor.findViewWithTag("stream-result-main")).getText().toString().contains("H.265 / HEVC"));
                 assertEquals(1,((ArrayList<?>)privateField(activity,"streams")).size());
             } catch (Exception e) { throw new AssertionError(e); } });
-            if (preset == CameraRules.Preset.HIKVISION) { device.waitForIdle(); assertTrue(device.takeScreenshot(new java.io.File(context.getFilesDir(),"ui-codec-main.png"))); }
-            assertNull("MAIN must stay connected before intentional preview close", main.failure.get());
-            main.expectClientDisconnect = true;
+            assertNull("SUB must stay connected before intentional preview close", sub.failure.get());
+            assertEquals("Saved MAIN must never be contacted", 0, main.acceptedConnections);
+            sub.expectClientDisconnect = true;
             scenario.onActivity(activity -> { try {
                 android.app.AlertDialog dialog = (android.app.AlertDialog)privateField(activity,"connectionPreview");
                 dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
@@ -326,9 +329,9 @@ public final class InBandPlaybackTest {
                 assertNull(privateField(activity,"connectionPreview")); assertTrue(((ArrayList<?>)privateField(activity,"streams")).isEmpty());
             } catch (Exception e) { throw new AssertionError(e); } });
             assertEquals(1,saved.get());
-            main.control.join(2000);
-            assertFalse("Closing preview must close the main connection", main.control.isAlive());
-            assertEquals(1,sub.setupRequests); assertEquals(1,main.setupRequests);
+            sub.control.join(2000);
+            assertFalse("Saving preview must close the SUB connection", sub.control.isAlive());
+            assertEquals(1,sub.setupRequests); assertEquals(0,main.acceptedConnections);
             assertNull(sub.failure.get()); assertNull(main.failure.get());
         }
     }
@@ -350,7 +353,7 @@ public final class InBandPlaybackTest {
         private volatile boolean expectClientDisconnect;
         volatile boolean shiftedHevcFu;
         volatile int singleNalPackets;
-        volatile int setupRequests,playRequests;
+        volatile int setupRequests,playRequests,acceptedConnections;
         private int videoChannel;
         private final java.util.Set<Integer> channels = new java.util.HashSet<>();
         volatile int fuPackets;
@@ -387,6 +390,7 @@ public final class InBandPlaybackTest {
 
         private void serve() {
             try (Socket socket = listener.accept()) {
+                acceptedConnections++;
                 client = socket;
                 if (closed) return;
                 socket.setTcpNoDelay(true);

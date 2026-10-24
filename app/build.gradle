@@ -23,8 +23,6 @@ android {
     }
     buildTypes {
         release {
-            // ARM TV package stays below the legacy updater's 64 MiB limit.
-            ndk { abiFilters 'armeabi-v7a', 'arm64-v8a' }
             if (System.getenv('CCTV_KEYSTORE_PATH')) signingConfig signingConfigs.retained
             minifyEnabled true
             shrinkResources true
@@ -35,15 +33,13 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-    packaging { jniLibs { useLegacyPackaging = true } }
     lint { abortOnError true }
 }
 
 dependencies {
-    // Pinned playback engines; libVLC is used for mainstream compatibility.
+    // Pinned Media3 playback with the local RTSP compatibility parser.
     implementation 'androidx.media3:media3-exoplayer:1.8.0'
     implementation project(':rtsp-compat')
-    implementation 'org.videolan.android:libvlc-all:3.7.2'
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20240303'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'

@@ -21,7 +21,7 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.rtsp.RtspMediaSource;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 
-/** One visible stream; no offscreen player, no preview network requests, bounded retry. */
+/** One visible substream with bounded retry and explicit player release. */
 @UnstableApi
 public final class StreamTile extends FrameLayout {
     private static final String STATS_TAG = "CCTVPlayback";
@@ -40,20 +40,20 @@ public final class StreamTile extends FrameLayout {
     public void setChromeVisible(boolean visible) { title.setVisibility(visible ? VISIBLE : GONE); }
     private final String url;
     private final boolean tcp;
-    private final boolean main;
+    private final boolean fullscreen;
     private ExoPlayer player;
-    private VlcStreamPlayer vlc;
     private boolean released;
     private int failures;
     private int generation;
     private volatile long lastFrame;
     private float aspect = 16f / 9f;
 
+    /** The legacy main flag controls fullscreen sizing only; playback always uses SUB. */
     public StreamTile(Context context, Camera camera, boolean main, boolean tcp) {
         super(context);
-        this.main = main;
+        this.fullscreen = main;
         this.tcp = tcp;
-        this.url = main ? camera.mainUrl : camera.subUrl;
+        this.url = camera.subUrl;
         setBackgroundColor(Color.BLACK);
         surface = new SurfaceView(context);
         surface.setFocusable(false);
@@ -63,7 +63,7 @@ public final class StreamTile extends FrameLayout {
         LayoutParams state = new LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
         state.setMargins(dp(8), dp(8), dp(8), 0);
         addView(status, state);
-        title = label(context.getString(main ? R.string.common_stream_main : R.string.common_stream_sub, camera.name), main ? 18 : 13);
+        title = label(context.getString(R.string.common_stream_sub, camera.name), main ? 18 : 13);
         title.setSingleLine(true); title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LayoutParams caption = new LayoutParams(-1, -2, Gravity.BOTTOM);
         addView(title, caption);
@@ -72,7 +72,6 @@ public final class StreamTile extends FrameLayout {
 
     /** Actual decoder format, queried after a rendered frame; never an encoder override. */
     public String detectedVideoCodec() {
-        if (vlc != null) return vlc.detectedVideoCodec();
         androidx.media3.common.Format format = player == null ? null : player.getVideoFormat();
         String mime = format == null ? null : format.sampleMimeType;
         if (androidx.media3.common.MimeTypes.VIDEO_H264.equals(mime)) return "H.264";
@@ -98,34 +97,12 @@ public final class StreamTile extends FrameLayout {
         final int token = ++generation;
         status.setVisibility(VISIBLE); status.setText(R.string.common_connecting);
         try {
-            if (main) {
-                vlc = new VlcStreamPlayer(getContext(), surface, url, new VlcStreamPlayer.Listener() {
-                    private boolean current() { return !released && token == generation && vlc != null; }
-                    @Override public void onFirstFrame() {
-                        if (!current()) return;
-                        failures = 0; status.setVisibility(GONE);
-                        if (listener != null) listener.onFirstFrame();
-                    }
-                    @Override public void onFailure(PlaybackFailure reason) {
-                        if (current()) fail(reason);
-                    }
-                    @Override public void onVideoSize(float value) {
-                        if (current() && Float.isFinite(value) && value > 0) {
-                            aspect = value; requestLayout();
-                        }
-                    }
-                });
-                vlc.setWindowSize(surface.getWidth(), surface.getHeight());
-                vlc.start();
-                handler.postDelayed(() -> watchdog(token), 5000);
-                return;
-            }
             DefaultTrackSelector selector = new DefaultTrackSelector(getContext());
             selector.setParameters(selector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true));
             DefaultLoadControl buffers = new DefaultLoadControl.Builder()
                     .setBufferDurationsMs(500, 2000, 200, 500)
-                    .setTargetBufferBytes(main ? 6 * 1024 * 1024 : 2 * 1024 * 1024)
+                    .setTargetBufferBytes(2 * 1024 * 1024)
                     .setPrioritizeTimeOverSizeThresholds(false).build();
             player = new ExoPlayer.Builder(getContext(), new DefaultRenderersFactory(getContext())
                     .setEnableDecoderFallback(true))
@@ -173,8 +150,8 @@ public final class StreamTile extends FrameLayout {
     private void watchdog(int token) {
         if (released || token != generation) return;
         logPlaybackStats("watchdog");
-        long frameTime = vlc == null ? lastFrame : vlc.lastFrameTimeMs();
-        if (SystemClock.elapsedRealtime() - frameTime > (main ? 12000 : 25000)) { fail(PlaybackFailure.TIMEOUT); return; }
+        long frameTime = lastFrame;
+        if (SystemClock.elapsedRealtime() - frameTime > 25000) { fail(PlaybackFailure.TIMEOUT); return; }
         handler.postDelayed(() -> watchdog(token), 5000);
     }
 
@@ -199,19 +176,17 @@ public final class StreamTile extends FrameLayout {
     }
 
     private void releasePlayer() {
-        if (vlc != null) { VlcStreamPlayer previous = vlc; vlc = null; previous.release(); }
         if (player != null) { logPlaybackStats("release"); player.clearVideoSurface(); player.release(); player = null; }
     }
 
     /** Opt-in ADB diagnostics: aggregate counters only, never names, URLs or credentials. */
     private void logPlaybackStats(String event) {
-        if (vlc != null) { vlc.logPlaybackStats(event); return; }
         if (player == null || !android.util.Log.isLoggable(STATS_TAG, android.util.Log.DEBUG)) return;
         androidx.media3.common.Format format = player.getVideoFormat();
         androidx.media3.exoplayer.DecoderCounters counters = player.getVideoDecoderCounters();
         if (counters == null) return;
         counters.ensureUpdated();
-        android.util.Log.d(STATS_TAG, "event=" + event + " kind=" + (main ? "MAIN" : "SUB")
+        android.util.Log.d(STATS_TAG, "event=" + event + " kind=SUB"
                 + " atMs=" + SystemClock.elapsedRealtime() + " state=" + player.getPlaybackState()
                 + " posMs=" + player.getCurrentPosition()
                 + " bufferMs=" + Math.max(0, player.getBufferedPosition() - player.getCurrentPosition())
@@ -237,11 +212,10 @@ public final class StreamTile extends FrameLayout {
     @Override protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
         int w = right - left, h = bottom - top;
-        int lines = main ? 3 : h < dp(110) ? 1 : 2;
+        int lines = fullscreen ? 3 : h < dp(110) ? 1 : 2;
         if (status.getMaxLines() != lines) status.setMaxLines(lines);
         int vw = w, vh = Math.round(w / aspect);
         if (vh > h) { vh = h; vw = Math.round(h * aspect); }
         surface.layout((w - vw) / 2, (h - vh) / 2, (w + vw) / 2, (h + vh) / 2);
-        if (vlc != null) vlc.setWindowSize(vw, vh);
     }
 }
