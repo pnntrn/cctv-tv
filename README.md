@@ -12,13 +12,13 @@ A lightweight native Android TV / Google TV RTSP viewer for Android 8.0+. Direct
 
 ## Download
 
-[Download the signed 0.4.3 release candidate APK](https://github.com/pnntrn/cctv-tv/releases/download/v0.4.3-rc.1/cctv-release.apk) · [Release notes and checksums](https://github.com/pnntrn/cctv-tv/releases)
+[Download the signed 0.4.4 release candidate APK](https://github.com/pnntrn/cctv-tv/releases/download/v0.4.4-rc.1/cctv-release.apk) · [Release notes and checksums](https://github.com/pnntrn/cctv-tv/releases)
 
 Download `cctv-release.apk` on your Android TV or transfer it to the TV, then open it to install. Install retained-key updates over the existing app without uninstalling or clearing data. Saved profiles use the same encrypted format; retention on the owner’s device must still be verified. Android 8.0 or later is required.
 
-Version 0.4.3 simplifies Mi Box setup: hold OK for one second, choose **ตั้งค่า** (Settings), then confirm. Back closes normally. It also supports H.265/HEVC streams whose SDP omits codec parameter sets by reading real in-band VPS/SPS/PPS; H.264 support remains. Version 0.4.1 corrects remembered-camera and grid-page restoration after reordering. It remains a release candidate for physical-device verification. Version 0.4.0 introduced Thai controls, an edge-to-edge camera grid with controls hidden when idle, and separate technician setup. It also includes H.264 streams with missing SDP codec metadata and recorder draft recovery. Actual Hikvision playback and update/profile preservation on the owner's Mi Box still need device verification.
+Version 0.4.4 detects H.264/H.265 automatically and gives technicians separate substream/mainstream picture tests with independent codec/results. Hikvision, VIGI NVR and VIGI camera paths share the same decoder; unused audio/application SDP no longer blocks valid video. H.265+ is reported as HEVC and still requires testing on the actual camera/TV. Version 0.4.3 added bounded HEVC in-band parameter discovery and simpler Mi Box setup: hold OK for one second, choose **ตั้งค่า**, then confirm. Version 0.4.1 corrects remembered-camera and grid-page restoration after reordering. It remains a release candidate for physical-device verification. Version 0.4.0 introduced Thai controls, an edge-to-edge camera grid with controls hidden when idle, and separate technician setup. It also includes H.264 streams with missing SDP codec metadata and recorder draft recovery. Actual Hikvision playback and update/profile preservation on the owner's Mi Box still need device verification.
 
-[Source and updated usage documentation for this candidate](https://github.com/pnntrn/cctv-tv/tree/v0.4.3-rc.1#readme) · [Review PR #1](https://github.com/pnntrn/cctv-tv/pull/1) (unmerged).
+[Source and updated usage documentation for this candidate](https://github.com/pnntrn/cctv-tv/tree/v0.4.4-rc.1#readme) · [Review PR #1](https://github.com/pnntrn/cctv-tv/pull/1) (unmerged).
 
 ## Viewing
 
@@ -46,7 +46,7 @@ Sixteen streams requires enough hardware decoders. Start with four tiles on smal
 1. Hold **OK for one second**, then choose **ตั้งค่า** (Settings) in the viewing menu. Confirm technician setup and create a location, such as **Shop**.
 2. Choose **เพิ่มเครื่องบันทึก**. One NVR is the primary setup for each location; an existing recorder gets **แก้ไขเครื่องบันทึก** instead. Additional NVRs and standalone/custom cameras are available under **ขั้นสูง**.
 3. Enter the recorder address, RTSP port, credentials and channel range.
-4. **Test & save** previews the first substream on the TV. **Save channels** becomes available after a decoded video frame.
+4. **Test & save** opens the first channel’s picture tests. Use **ทดสอบภาพรอง / ทดสอบภาพหลัก** to test each stream and see its detected codec. Saving requires a decoded substream; the main result stays separate. See [codec/device compatibility](docs/COMPATIBILITY.md).
 5. Use **แก้ไขเครื่องบันทึก** to edit the location's primary NVR, or **ขั้นสูง → เครื่องบันทึกทั้งหมด** for additional recorders. Existing linked camera IDs, names and order stay intact. Channels outside a changed range are removed; new channels are appended.
 
 Recorder drafts retain non-secret form fields across backgrounding and recreation. Passwords are never stored in drafts; backgrounding clears the entered password and preview verification. Back offers Keep draft or Discard. Re-enter technician setup to resume, then test again before saving. A blank password while editing an existing recorder keeps its saved credential.
@@ -115,6 +115,7 @@ These are native emulator screenshots using deliberately offline fixture cameras
 
 - [0.4.1 validation](docs/validation-0.4.1.md) records 28 unit methods, 12 native methods and release-verifier checks.
 
+- [0.4.4 codec-check validation](docs/validation-0.4.4.md) records independent stream checks and the synthetic Hikvision/VIGI path/codec matrix.
 - [0.4.3 setup/HEVC validation](docs/validation-0.4.3.md) records the simpler setup flow, H.265 regression and profile-persistence checks.
 - [0.4.2 Mi Box validation](docs/validation-0.4.2.md) records 34 unit methods and 14 native methods, including controls without a Menu button.
 

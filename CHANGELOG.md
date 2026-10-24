@@ -2,6 +2,14 @@
 
 Release candidates remain subject to the physical-device checks listed below. Source history is available in [GitHub releases](https://github.com/pnntrn/cctv-tv/releases).
 
+## 0.4.4 — release candidate
+
+- Auto-detect codec and give technicians separate substream/mainstream tests, with real decoded-frame results and detected H.264 or H.265/HEVC labels. H.265+ is not claimed as a separately detected mode.
+- Preserve decoded-substream saving requirements. Main failures stay separate; retesting, stream replacement, closing and backgrounding invalidate old callbacks. Run only one preview player.
+- Ignore unused audio/application SDP before media validation, including multi-format non-video sections; keep video validation strict.
+- Add mixed H.264-sub/H.265-main native checks for Hikvision, VIGI NVR and VIGI camera paths, plus a compatibility guide. Actual smart-codec/firmware/TV decoder combinations still need device testing.
+- Retain package/key/profiles and NVR encoding; no production dependency. Version code: 1012.
+
 ## 0.4.3 — release candidate
 
 - Simplify Mi Box setup: hold OK for one second → choose **ตั้งค่า** → existing safe confirmation. Back closes normally and never requests setup.

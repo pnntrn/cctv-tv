@@ -11,8 +11,8 @@ Same package/key/profiles; no dependency or recorder encoder change. Version0.4.
 
 ## Tasks
 
-- [ ] Add StreamCheckStateTest first: only SUB first frame enables saving; stale/retested/failed/background callbacks rejected; MAIN failure does not masquerade as SUB result. Observe missing-API RED, implement state and preview UI/codec labels, verify GREEN.
+- [x] Add StreamCheckStateTest first: only SUB first frame enables saving; stale/retested/failed/background callbacks rejected; MAIN failure does not masquerade as SUB result. Observe missing-API RED, implement state and preview UI/codec labels, verify GREEN.
 - [ ] Add native UI callback contract and three real H264-sub/H265-main codec/path matrix methods for Hikvision/VIGI_NVR/VIGI_CAMERA; verify actual decoded frames and both results, not only RTSP handshake. Export sub/main captures.
-- [ ] Worker observes unused dynamic audio/application parser RED, skips non-video sections and proves exact VIGI sample/strict video validation GREEN.
-- [ ] Full build/unit/lint, core/digest/updater/release checks; independent review; fix failures. Document vendor sources and honest compatibility scope.
+- [x] Worker observes unused dynamic audio/application parser RED, skips non-video sections and proves exact VIGI sample/strict video validation GREEN.
+- [x] Full build/unit/lint, core/digest/updater/release checks; independent review; fix failures. Document vendor sources and honest compatibility scope.
 - [ ] Push reviewed PR/tag with signed gates, require native GREEN, verify public bytes/version/certificate, update main download link and PR evidence, leave unmerged.

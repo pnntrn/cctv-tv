@@ -920,46 +920,81 @@ public final class MainActivity extends Activity {
     private void showConnectionTest(Camera camera, Runnable onVerified) {
         closeConnectionPreview(); releaseStreams();
         final int generation = ++previewGeneration; previewVerified = false;
-        LinearLayout content = form();
-        TextView outcome = text(getString(R.string.tv_checking_substream), 15, MINT); content.addView(outcome);
-        StreamTile preview = new StreamTile(this, camera, false, current.tcp);
-        preview.setAutoRetry(false); streams.add(preview);
-        content.addView(preview, new LinearLayout.LayoutParams(-1, dp(220)));
+        StreamCheckState checks = new StreamCheckState();
+        LinearLayout content = form(), choices = row();
+        Button sub = button(getString(R.string.tv_test_substream), () -> { });
+        Button main = button(getString(R.string.tv_test_mainstream), () -> { });
+        sub.setTag("stream-test-sub"); main.setTag("stream-test-main");
+        sub.setNextFocusRightId(main.getId()); main.setNextFocusLeftId(sub.getId());
+        addButton(choices, sub); addButton(choices, main); content.addView(choices);
+        TextView subResult = text("", 14, TEXT), mainResult = text("", 14, TEXT);
+        subResult.setTag("stream-result-sub"); mainResult.setTag("stream-result-main");
+        content.addView(subResult); content.addView(mainResult);
+        FrameLayout video = new FrameLayout(this);
+        content.addView(video, new LinearLayout.LayoutParams(-1, dp(220)));
+        content.addView(text(getString(R.string.tv_stream_checks_hint), 12, TEXT));
         AlertDialog test = dialogBuilder().setTitle(getString(R.string.tv_connection_preview))
-                .setView(content).setNegativeButton(getString(R.string.tv_back), null)
+                .setView(scroll(content)).setNegativeButton(getString(R.string.tv_back), null)
                 .setPositiveButton(onVerified == null ? getString(R.string.tv_done) : getString(R.string.tv_save_channels), null).create();
         connectionPreview = test;
-        final boolean[] failed = {false};
-        preview.setListener(new StreamTile.Listener() {
-            @Override public void onFirstFrame() {
-                previewOnUi(() -> {
-                    if (!started || failed[0] || generation != previewGeneration || connectionPreview != test || !test.isShowing()) return;
-                    previewVerified = true; outcome.setText(getString(R.string.tv_picture_verified_substream_is_playing));
-                    test.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
-                });
+        StreamTile[] active = {null};
+        String[] details = {"", ""};
+        Runnable refresh = () -> {
+            TextView[] views = {subResult, mainResult};
+            int[] names = {R.string.tv_substream, R.string.tv_mainstream};
+            for (StreamCheckState.Stream stream : StreamCheckState.Stream.values()) {
+                StreamCheckState.Status status = checks.status(stream);
+                String result = status == StreamCheckState.Status.NOT_TESTED ? getString(R.string.tv_stream_not_tested)
+                        : status == StreamCheckState.Status.TESTING ? getString(R.string.tv_stream_testing) : details[stream.ordinal()];
+                views[stream.ordinal()].setText(getString(R.string.tv_stream_result, getString(names[stream.ordinal()]), result));
+                views[stream.ordinal()].setTextColor(status == StreamCheckState.Status.FAILED ? 0xFFFFA6A6
+                        : status == StreamCheckState.Status.VERIFIED ? MINT : TEXT);
             }
-            @Override public void onFailure(PlaybackFailure reason) {
-                previewOnUi(() -> {
-                    if (generation != previewGeneration || connectionPreview != test || !test.isShowing()) return;
-                    failed[0] = true; previewVerified = false; outcome.setText(UiText.translate(MainActivity.this, reason.message));
-                    test.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(onVerified == null);
-                });
-            }
-        });
-        Runnable bindPreview = () -> {
-            test.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(onVerified == null);
-            test.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-                if (onVerified != null && (!started || !previewVerified || generation != previewGeneration)) return;
-                test.dismiss(); if (onVerified != null) onVerified.run();
-            });
-            preview.start(0);
+            previewVerified = checks.canSave();
+            test.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(onVerified == null || previewVerified);
         };
+        java.util.function.Consumer<StreamCheckState.Stream> begin = stream -> {
+            if (!started || generation != previewGeneration || connectionPreview != test || !test.isShowing()) return;
+            int attempt = checks.begin(stream);
+            if (active[0] != null) { active[0].release(); streams.remove(active[0]); }
+            video.removeAllViews();
+            StreamTile preview = new StreamTile(this, camera, stream == StreamCheckState.Stream.MAIN, current.tcp);
+            active[0] = preview; preview.setAutoRetry(false); streams.add(preview);
+            video.addView(preview, new FrameLayout.LayoutParams(-1, -1));
+            preview.setListener(new StreamTile.Listener() {
+                @Override public void onFirstFrame() {
+                    previewOnUi(() -> {
+                        if (!started || generation != previewGeneration || connectionPreview != test || !test.isShowing()
+                                || !checks.verified(attempt)) return;
+                        details[stream.ordinal()] = getString(R.string.tv_stream_verified) + " • " + preview.detectedVideoCodec();
+                        refresh.run();
+                    });
+                }
+                @Override public void onFailure(PlaybackFailure reason) {
+                    previewOnUi(() -> {
+                        if (!started || generation != previewGeneration || connectionPreview != test || !test.isShowing()
+                                || !checks.failed(attempt)) return;
+                        details[stream.ordinal()] = UiText.playback(MainActivity.this, reason);
+                        refresh.run();
+                    });
+                }
+            });
+            refresh.run(); preview.start(0);
+        };
+        sub.setOnClickListener(v -> begin.accept(StreamCheckState.Stream.SUB));
+        main.setOnClickListener(v -> begin.accept(StreamCheckState.Stream.MAIN));
         test.setOnDismissListener(d -> {
-            preview.release(); streams.remove(preview);
+            checks.close();
+            if (active[0] != null) { active[0].release(); streams.remove(active[0]); active[0] = null; }
             if (connectionPreview == test) { connectionPreview = null; previewVerified = false; previewGeneration++; }
         });
         test.setOnKeyListener((d, code, event) -> code == KeyEvent.KEYCODE_MENU);
-        test.show(); bindPreview.run();
+        test.show();
+        test.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            if (onVerified != null && (!started || !checks.canSave() || generation != previewGeneration)) return;
+            test.dismiss(); if (onVerified != null) onVerified.run();
+        });
+        begin.accept(StreamCheckState.Stream.SUB);
     }
 
     private void startPhoneSetup() {

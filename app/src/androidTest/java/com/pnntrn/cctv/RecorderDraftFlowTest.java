@@ -274,6 +274,8 @@ public class RecorderDraftFlowTest {
                 assertNotNull("Technician preview must offer a separate mainstream test", main);
                 StreamTile.Listener oldSub = (StreamTile.Listener)get(((ArrayList<?>)get(a,"streams")).get(0),"listener");
                 main.performClick();
+                assertTrue("A replaced unfinished substream must not keep showing progress",
+                        ((android.widget.TextView)decor.findViewWithTag("stream-result-sub")).getText().toString().contains(context.getString(R.string.tv_stream_not_tested)));
                 StreamTile.Listener mainListener = (StreamTile.Listener)get(((ArrayList<?>)get(a,"streams")).get(0),"listener");
                 mainListener.onFirstFrame();
                 assertFalse("A verified main stream must never unlock an unverified substream", preview.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled());

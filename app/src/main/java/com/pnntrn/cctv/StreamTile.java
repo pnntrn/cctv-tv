@@ -68,6 +68,15 @@ public final class StreamTile extends FrameLayout {
         setContentDescription(context.getString(main ? R.string.common_stream_fullscreen_description : R.string.common_stream_grid_description, camera.name));
     }
 
+    /** Actual decoder format, queried after a rendered frame; never an encoder override. */
+    public String detectedVideoCodec() {
+        androidx.media3.common.Format format = player == null ? null : player.getVideoFormat();
+        String mime = format == null ? null : format.sampleMimeType;
+        if (androidx.media3.common.MimeTypes.VIDEO_H264.equals(mime)) return "H.264";
+        if (androidx.media3.common.MimeTypes.VIDEO_H265.equals(mime)) return "H.265 / HEVC";
+        return getContext().getString(R.string.tv_codec_other);
+    }
+
     private int dp(int x) { return Math.round(x * getResources().getDisplayMetrics().density); }
     private TextView label(String text, int size) {
         TextView v = new TextView(getContext());

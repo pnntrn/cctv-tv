@@ -78,8 +78,8 @@ import java.util.regex.Pattern;
     SessionDescription.Builder sessionDescriptionBuilder = new SessionDescription.Builder();
     @Nullable MediaDescription.Builder mediaDescriptionBuilder = null;
 
-    // Tracks if currently parsing an invalid media description and should skip any parsed
-    // and related SDP lines until the next valid media description.
+    // Tracks whether the current media description is unsupported or invalid and its lines should
+    // be skipped until the next media description.
     boolean isSkippingMediaDescription = false;
 
     // Lines are separated by an CRLF.
@@ -103,6 +103,10 @@ import java.util.regex.Pattern;
 
       String sdpType = checkNotNull(matcher.group(1));
       String sdpValue = checkNotNull(matcher.group(2));
+
+      if (isSkippingMediaDescription && !MEDIA_TYPE.equals(sdpType)) {
+        continue;
+      }
 
       switch (sdpType) {
         case VERSION_TYPE:
@@ -246,23 +250,26 @@ import java.util.regex.Pattern;
   /**
    * Parses a Media Description SDP line.
    *
-   * <p>Returns a {@link MediaDescription.Builder} from parsing a valid SDP {@code line} is parsed
-   * or {@code null} if {@code line} contains invalid port or format values.
+   * <p>Returns a {@link MediaDescription.Builder} for valid video lines, or {@code null} for
+   * non-video lines and lines with invalid port or format values.
    *
    * @param line representing a Media Description.
-   * @return valid {@link MediaDescription.Builder} or {@code null} if {@code line} contains invalid
-   *     port or format values.
+   * @return A valid video {@link MediaDescription.Builder}, or {@code null} otherwise.
    * @throws ParserException if malformed SDP media description line.
    */
   @Nullable
   private static MediaDescription.Builder parseMediaDescriptionLine(String line)
       throws ParserException {
+    String mediaType = Util.split(line.trim(), "\\s+")[0];
+    if (!MediaDescription.MEDIA_TYPE_VIDEO.equals(mediaType)) {
+      return null;
+    }
+
     Matcher matcher = MEDIA_DESCRIPTION_PATTERN.matcher(line);
     if (!matcher.matches()) {
       throw ParserException.createForMalformedManifest(
           "Malformed SDP media description line: " + line, /* cause= */ null);
     }
-    String mediaType = checkNotNull(matcher.group(1));
     String portString = checkNotNull(matcher.group(2));
     String transportProtocol = checkNotNull(matcher.group(3));
     String payloadTypeString = checkNotNull(matcher.group(4));

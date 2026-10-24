@@ -113,12 +113,10 @@
     <string name="tv_moves_between_fields_and_scrolls_test_save_is_below_back_offers_keep_draft_or_discard_preview_back_returns_here">↑ / ↓ เลื่อนช่องกรอก ปุ่มทดสอบและบันทึกอยู่ด้านล่าง ย้อนกลับเพื่อเก็บฉบับร่างหรือละทิ้ง จากหน้าทดสอบกดย้อนกลับเพื่อกลับมาหน้านี้</string>
     <string name="tv_test_save">ทดสอบและบันทึก</string>
     <string name="tv_port">พอร์ต</string>
-    <string name="tv_checking_substream">กำลังตรวจสอบภาพรอง…</string>
     <string name="tv_connection_preview">ทดสอบการเชื่อมต่อ</string>
     <string name="tv_back">ย้อนกลับ</string>
     <string name="tv_done">เสร็จ</string>
     <string name="tv_save_channels">บันทึกช่องกล้อง</string>
-    <string name="tv_picture_verified_substream_is_playing">ตรวจสอบภาพแล้ว • ภาพรองกำลังเล่น</string>
     <string name="tv_pairing_ended">การจับคู่สิ้นสุดแล้ว</string>
     <string name="tv_open_on_your_phone">เปิดที่อยู่นี้บนโทรศัพท์</string>
     <string name="tv_pairing_code">"รหัสจับคู่   "</string>
@@ -127,4 +125,15 @@
     <string name="tv_phone_setup_session_ended">การตั้งค่าผ่านโทรศัพท์สิ้นสุดแล้ว</string>
     <string name="tv_no_local_network_address_connect_the_tv_to_your_lan_or_wi_fi">ไม่พบที่อยู่เครือข่าย กรุณาเชื่อมต่อทีวีกับ LAN หรือ Wi-Fi</string>
     <string name="tv_saved_on_tv_you_can_close_pairing_and_start_watching">บันทึกบนทีวีแล้ว ปิดการจับคู่เพื่อเริ่มดูภาพได้</string>
+    <string name="tv_test_substream">ทดสอบภาพรอง</string>
+    <string name="tv_test_mainstream">ทดสอบภาพหลัก</string>
+    <string name="tv_substream">ภาพรอง</string>
+    <string name="tv_mainstream">ภาพหลัก</string>
+    <string name="tv_stream_not_tested">ยังไม่ทดสอบ</string>
+    <string name="tv_stream_testing">กำลังทดสอบ…</string>
+    <string name="tv_stream_verified">ดูภาพได้</string>
+    <string name="tv_stream_result">%1$s: %2$s</string>
+    <string name="tv_codec_other">รูปแบบอื่น / ไม่ทราบรูปแบบ</string>
+    <string name="tv_stream_checks_hint">ตรวจจับรูปแบบวิดีโออัตโนมัติ ต้องทดสอบภาพรองผ่านก่อนบันทึก
+ผลภาพหลักแยกจากภาพรอง หากดูภาพหลักไม่ได้ หน้าดูกล้องจะใช้ภาพรอง</string>
 </resources>

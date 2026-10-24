@@ -22,7 +22,7 @@ for test_class in InBandPlaybackTest RecorderDraftFlowTest TvFlowTest ViewingFlo
   adb shell am instrument -w -e class "com.pnntrn.cctv.$test_class" com.pnntrn.cctv.test/androidx.test.runner.AndroidJUnitRunner | tee -a ui-results/instrumentation.txt
   adb logcat -d -v brief -s ExoPlayerImplInternal MediaCodecVideoRenderer ACodec OMXClient MediaCodec SoftAVC SoftAVCDec OMXNodeInstance > "ui-results/$test_class-codec.txt"
   # Save each class's captures before the next clean-install fixture reset removes them.
-  for name in grid fullscreen settings recorder updates idle viewing-menu technician-entry technician-empty mi-box-empty mi-box-menu mi-box-technician; do
+  for name in grid fullscreen settings recorder updates idle viewing-menu technician-entry technician-empty mi-box-empty mi-box-menu mi-box-technician codec-sub codec-main; do
     if adb shell run-as com.pnntrn.cctv ls "files/ui-$name.png" >/dev/null 2>&1; then
       adb exec-out run-as com.pnntrn.cctv cat "files/ui-$name.png" > "ui-results/$name.png"
     fi
@@ -38,7 +38,7 @@ for p in Path('ui-results').glob('*.png'):
         p.unlink()
     else:
         assert struct.unpack('>II',data[16:24]) == (1920,1080), 'Native UI screenshots must use physical TV geometry'
-required={'grid','fullscreen','settings','recorder','updates','idle','viewing-menu','technician-entry','technician-empty','mi-box-empty','mi-box-menu','mi-box-technician'}
+required={'grid','fullscreen','settings','recorder','updates','idle','viewing-menu','technician-entry','technician-empty','mi-box-empty','mi-box-menu','mi-box-technician','codec-sub','codec-main'}
 assert required <= {p.stem for p in Path('ui-results').glob('*.png')}, 'Required native screenshots are missing'
 output=Path('ui-results/instrumentation.txt').read_text()
 assert not re.search(r'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed', output), 'Android instrumentation failed or crashed'

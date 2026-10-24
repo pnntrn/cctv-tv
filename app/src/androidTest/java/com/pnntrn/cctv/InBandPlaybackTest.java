@@ -178,6 +178,80 @@ public final class InBandPlaybackTest {
         }
     }
 
+    @Test public void hikvisionMixedCodecTechnicianChecksBothStreams() throws Exception { checkBothStreams(CameraRules.Preset.HIKVISION); }
+    @Test public void vigiNvrMixedCodecTechnicianChecksBothStreams() throws Exception { checkBothStreams(CameraRules.Preset.VIGI_NVR); }
+    @Test public void vigiCameraMixedCodecTechnicianChecksBothStreams() throws Exception { checkBothStreams(CameraRules.Preset.VIGI_CAMERA); }
+    private static byte[] fixture(boolean hevc) throws Exception {
+        try (InputStream in = InstrumentationRegistry.getInstrumentation().getContext().getAssets().open(hevc ? "inband.h265" : "inband.h264")) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream(); byte[] buffer = new byte[4096]; int count;
+            while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
+            return out.toByteArray();
+        }
+    }
+    private static Object privateField(Object owner, String name) throws Exception {
+        java.lang.reflect.Field field = owner.getClass().getDeclaredField(name); field.setAccessible(true); return field.get(owner);
+    }
+    private void checkBothStreams(CameraRules.Preset preset) throws Exception {
+        var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        assertTrue("Only clean synthetic fixture installs may run this test", new ProfileStore(context).load().isEmpty());
+        assertTrue(android.os.Build.FINGERPRINT.contains("generic") || android.os.Build.HARDWARE.contains("ranchu") || android.os.Build.HARDWARE.contains("goldfish"));
+        String subPath = java.net.URI.create(CameraRules.streamUrl(preset,"127.0.0.1",554,"","",1,false)).getPath();
+        String mainPath = java.net.URI.create(CameraRules.streamUrl(preset,"127.0.0.1",554,"","",1,true)).getPath();
+        String unused = preset == CameraRules.Preset.HIKVISION ? "" : "m=audio 0 RTP/AVP 8\r\na=rtpmap:8 PCMA/8000\r\na=control:track2\r\n"
+                + "m=application/TP-LINK 0 RTP/AVP smart/0/25000\r\na=control:track3\r\na=rtpmap:95 TP-LINK/25000\r\n";
+        java.util.concurrent.atomic.AtomicInteger saved = new java.util.concurrent.atomic.AtomicInteger();
+        try (LoopbackRtspServer sub = new LoopbackRtspServer(fixture(false), false, false, subPath, unused);
+             LoopbackRtspServer main = new LoopbackRtspServer(fixture(true), false, true, mainPath, unused);
+             ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(activity -> { try {
+                java.lang.reflect.Field current = MainActivity.class.getDeclaredField("current"); current.setAccessible(true);
+                current.set(activity, new Location("Synthetic mixed codec test"));
+                java.lang.reflect.Method preview = MainActivity.class.getDeclaredMethod("showConnectionTest", Camera.class, Runnable.class);
+                preview.setAccessible(true);
+                preview.invoke(activity, new Camera("Synthetic mixed codecs", sub.url(), main.url()), (Runnable)saved::incrementAndGet);
+            } catch (Exception e) { throw new AssertionError(e); } });
+            var device = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+            assertTrue("Substream must actually decode H.264", device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.textContains("H.264")), 30000));
+            scenario.onActivity(activity -> { try {
+                android.app.AlertDialog dialog = (android.app.AlertDialog)privateField(activity,"connectionPreview");
+                assertTrue(dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).isEnabled());
+                StreamTile tile = (StreamTile)((ArrayList<?>)privateField(activity,"streams")).get(0);
+                assertEquals("H.264", tile.detectedVideoCodec());
+                dialog.getWindow().getDecorView().findViewWithTag("stream-test-sub").requestFocus();
+            } catch (Exception e) { throw new AssertionError(e); } });
+            if (preset == CameraRules.Preset.HIKVISION) { device.waitForIdle(); assertTrue(device.takeScreenshot(new java.io.File(context.getFilesDir(),"ui-codec-sub.png"))); }
+            device.pressDPadRight();
+            scenario.onActivity(activity -> { try {
+                assertTrue(((android.app.AlertDialog)privateField(activity,"connectionPreview")).getWindow().getDecorView().findViewWithTag("stream-test-main").hasFocus());
+            } catch (Exception e) { throw new AssertionError(e); } });
+            device.pressDPadCenter();
+            assertTrue("Mainstream must actually decode HEVC", device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.textContains("H.265 / HEVC")), 30000));
+            sub.control.join(2000);
+            assertFalse("Switching tests must close the old substream connection", sub.control.isAlive());
+            scenario.onActivity(activity -> { try {
+                android.app.AlertDialog dialog = (android.app.AlertDialog)privateField(activity,"connectionPreview");
+                View decor = dialog.getWindow().getDecorView();
+                assertTrue(((android.widget.TextView)decor.findViewWithTag("stream-result-sub")).getText().toString().contains("H.264"));
+                assertTrue(((android.widget.TextView)decor.findViewWithTag("stream-result-main")).getText().toString().contains("H.265 / HEVC"));
+                assertEquals(1,((ArrayList<?>)privateField(activity,"streams")).size());
+            } catch (Exception e) { throw new AssertionError(e); } });
+            if (preset == CameraRules.Preset.HIKVISION) { device.waitForIdle(); assertTrue(device.takeScreenshot(new java.io.File(context.getFilesDir(),"ui-codec-main.png"))); }
+            scenario.onActivity(activity -> { try {
+                android.app.AlertDialog dialog = (android.app.AlertDialog)privateField(activity,"connectionPreview");
+                dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+            } catch (Exception e) { throw new AssertionError(e); } });
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+            scenario.onActivity(activity -> { try {
+                assertNull(privateField(activity,"connectionPreview")); assertTrue(((ArrayList<?>)privateField(activity,"streams")).isEmpty());
+            } catch (Exception e) { throw new AssertionError(e); } });
+            assertEquals(1,saved.get());
+            main.control.join(2000);
+            assertFalse("Closing preview must close the main connection", main.control.isAlive());
+            assertEquals(1,sub.setupRequests); assertEquals(1,main.setupRequests);
+            assertNull(sub.failure.get()); assertNull(main.failure.get());
+        }
+    }
+
     /** One client, IPv4 loopback only; all payload bytes come from the synthetic Annex-B asset. */
     private static final class LoopbackRtspServer implements AutoCloseable {
         private final ServerSocket listener;
@@ -185,6 +259,7 @@ public final class InBandPlaybackTest {
         private final List<List<byte[]>> frames;
         private final String fmtp;
         private final boolean hevc;
+        private final String streamPath, unusedMedia;
         private final Object outputLock = new Object();
         final AtomicReference<Throwable> failure = new AtomicReference<>();
         private volatile Socket client;
@@ -199,6 +274,10 @@ public final class InBandPlaybackTest {
         private long timestamp = 90000;
 
         LoopbackRtspServer(byte[] annexB, boolean withFmtp, boolean hevc) throws IOException {
+            this(annexB, withFmtp, hevc, "/fixture/", "");
+        }
+        LoopbackRtspServer(byte[] annexB, boolean withFmtp, boolean hevc, String path, String unusedMedia) throws IOException {
+            this.streamPath = path; this.unusedMedia = unusedMedia;
             this.hevc = hevc;
             frames = accessUnits(annexB, hevc);
             String vps = null, sps = null, pps = null;
@@ -218,7 +297,8 @@ public final class InBandPlaybackTest {
             control.start();
         }
 
-        String url() { return "rtsp://127.0.0.1:" + listener.getLocalPort() + "/fixture/"; }
+        String url() { return "rtsp://127.0.0.1:" + listener.getLocalPort() + streamPath; }
+        private String trackUrl() { return url() + (url().endsWith("/") ? "" : "/") + "trackID=1"; }
 
         private void serve() {
             try (Socket socket = listener.accept()) {
@@ -248,6 +328,8 @@ public final class InBandPlaybackTest {
                     skipFully(input, bodyLength);
                     if (cseq == null) throw new IOException("Missing CSeq");
                     String method = request.split(" ", 2)[0];
+                    if (method.equals("DESCRIBE") && !java.net.URI.create(request.split(" ")[1]).getPath().equals(streamPath))
+                        throw new IOException("Unexpected preset stream path");
                     switch (method) {
                         case "OPTIONS":
                             respond(cseq, "Public: OPTIONS, DESCRIBE, SETUP, PLAY, TEARDOWN\r\n", "");
@@ -257,8 +339,8 @@ public final class InBandPlaybackTest {
                                     + "s=Synthetic in-band H264\r\nc=IN IP4 127.0.0.1\r\n"
                                     + "t=0 0\r\na=control:*\r\na=range:npt=0-\r\n"
                                     + "m=video 0 RTP/AVP 96\r\na=rtpmap:96 " + (hevc ? "H265" : "H264") + "/90000\r\n"
-                                    + "a=control:trackID=1\r\n" + fmtp
-                                    + (hevc ? "m=audio 0 RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\na=control:trackID=2\r\n" : "");
+                                    + "a=control:" + (streamPath.equals("/fixture/") ? "trackID=1" : trackUrl()) + "\r\n" + fmtp
+                                    + (!unusedMedia.isEmpty() ? unusedMedia : hevc ? "m=audio 0 RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\na=control:trackID=2\r\n" : "");
                             respond(cseq, "Content-Type: application/sdp\r\nContent-Base: "
                                     + url() + "\r\n", sdp);
                             break;
@@ -275,7 +357,7 @@ public final class InBandPlaybackTest {
                             playRequests++;
                             if (sender != null) throw new IOException("Unexpected second PLAY");
                             respond(cseq, "Session: fixture\r\nRange: npt=0.000-\r\n"
-                                    + "RTP-Info: url=" + url() + "trackID=1;seq=" + sequence
+                                    + "RTP-Info: url=" + trackUrl() + ";seq=" + sequence
                                     + ";rtptime=" + timestamp + "\r\n", "");
                             playing = true;
                             sender = new Thread(this::stream, "inband-rtp-sender");

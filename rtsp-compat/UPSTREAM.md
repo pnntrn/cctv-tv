@@ -8,3 +8,5 @@ The MediaPeriod starts the real RTSP session before preparation only when H264 o
 The elementary-stream reader is a format-discovery probe only; its samples are discarded. A bounded 4 MiB startup cache is replayed through upstream RtpH264Reader after real SPS/PPS are found, preserving RTP marker access-unit boundaries. The existing out-of-band configuration path is unchanged.
 
 HEVC discovery follows RFC7798 single NAL/AP/FU without DONL: https://www.rfc-editor.org/rfc/rfc7798.html. Parameter sets are read through Media3 H265Reader; original RTP is replayed through RtpH265Reader after a real format is known. Synthetic inband.h265 was generated using FFmpeg/libx265 testsrc2 (320x180, 5fps, ten frames, yuv420p, keyint=5, repeat-headers=1, aud=1); it contains no camera footage.
+
+The SDP parser skips non-video sections before building media descriptions, including unused dynamic/multi-format audio and vendor application metadata. Video validation remains strict; this patch does not implement multi-payload video negotiation. See docs/COMPATIBILITY.md for vendor references and tested scope.
