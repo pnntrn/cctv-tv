@@ -12,13 +12,13 @@ A lightweight native Android TV / Google TV RTSP viewer for Android 8.0+. Direct
 
 ## Download
 
-[Download the signed 0.4.2 release candidate APK](https://github.com/pnntrn/cctv-tv/releases/download/v0.4.2-rc.1/cctv-release.apk) · [Release notes and checksums](https://github.com/pnntrn/cctv-tv/releases)
+[Download the signed 0.4.3 release candidate APK](https://github.com/pnntrn/cctv-tv/releases/download/v0.4.3-rc.1/cctv-release.apk) · [Release notes and checksums](https://github.com/pnntrn/cctv-tv/releases)
 
-Download `cctv-release.apk` on your Android TV or transfer it to the TV, then open it to install. Updates signed with the retained release key preserve saved profiles. Android 8.0 or later is required.
+Download `cctv-release.apk` on your Android TV or transfer it to the TV, then open it to install. Install retained-key updates over the existing app without uninstalling or clearing data. Saved profiles use the same encrypted format; retention on the owner’s device must still be verified. Android 8.0 or later is required.
 
-Version 0.4.2 adds Mi Box controls without a Menu button: hold OK for one second for viewing options, then hold Back for three seconds inside that menu for technician confirmation. Version 0.4.1 corrects remembered-camera and grid-page restoration after reordering. It remains a release candidate for physical-device verification. Version 0.4.0 introduced Thai controls, an edge-to-edge camera grid with controls hidden when idle, and separate technician setup. It also includes H.264 streams with missing SDP codec metadata and recorder draft recovery. Actual Hikvision playback and update/profile preservation on the owner's Mi Box still need device verification.
+Version 0.4.3 simplifies Mi Box setup: hold OK for one second, choose **ตั้งค่า** (Settings), then confirm. Back closes normally. It also supports H.265/HEVC streams whose SDP omits codec parameter sets by reading real in-band VPS/SPS/PPS; H.264 support remains. Version 0.4.1 corrects remembered-camera and grid-page restoration after reordering. It remains a release candidate for physical-device verification. Version 0.4.0 introduced Thai controls, an edge-to-edge camera grid with controls hidden when idle, and separate technician setup. It also includes H.264 streams with missing SDP codec metadata and recorder draft recovery. Actual Hikvision playback and update/profile preservation on the owner's Mi Box still need device verification.
 
-[Source and updated usage documentation for this candidate](https://github.com/pnntrn/cctv-tv/tree/v0.4.2-rc.1#readme) · [Review PR #1](https://github.com/pnntrn/cctv-tv/pull/1) (unmerged).
+[Source and updated usage documentation for this candidate](https://github.com/pnntrn/cctv-tv/tree/v0.4.3-rc.1#readme) · [Review PR #1](https://github.com/pnntrn/cctv-tv/pull/1) (unmerged).
 
 ## Viewing
 
@@ -29,7 +29,7 @@ Version 0.4.2 adds Mi Box controls without a Menu button: hold OK for one second
 - Fullscreen labels hide after four seconds; remote input reveals them again. Playback errors remain visible.
 - The last location, camera and grid page are remembered after a normal close / reopen.
 - Hold **OK for one second** to open viewing options for the grid, grid size and existing locations. A short OK still opens the selected camera or toggles its fullscreen stream. Holding OK never opens editing controls. Remotes with a Menu button can still short-press it for viewing options.
-- Inside the viewing menu, hold **Back for three seconds**, then confirm **เข้าสู่การตั้งค่า**, to enter technician setup. Remotes with Menu may also hold Menu for three seconds from viewing. Reorder cameras there with the up/down actions or a numbered move. Returning to viewing or backgrounding ends technician access.
+- Inside the viewing menu, choose **ตั้งค่า** (Settings), then confirm **เข้าสู่การตั้งค่า**, to enter technician setup. Remotes with Menu may also hold Menu for three seconds from viewing. Reorder cameras there with the up/down actions or a numbered move. Returning to viewing or backgrounding ends technician access.
 - Only the current page plays. Fullscreen releases all grid decoders. Settings, arrangement and backgrounding release playback. Audio is disabled in this version.
 - Controls use Thai labels, visible remote focus and 48dp targets. The idle viewing grid has no decorative gaps or borders. Video keeps its original aspect ratio.
 
@@ -37,13 +37,13 @@ Version 0.4.2 adds Mi Box controls without a Menu button: hold OK for one second
 
 เปิดแอปเพื่อดูตารางกล้องเต็มจอ กดลูกศรเพื่อเลือกกล้อง แล้วกด **OK** เพื่อดูเต็มจอ กด **ย้อนกลับ** เพื่อกลับตาราง เมนูและกรอบเลือกจะหายไปเมื่อไม่กดรีโมต 4 วินาที
 
-กด **OK ค้าง 1 วินาที** เพื่อเปิดเมนูเปลี่ยนรูปแบบตารางหรือสถานที่ สำหรับช่าง ให้เปิดเมนูนี้แล้วกด **ย้อนกลับค้าง 3 วินาที** จากนั้นเลือก **เข้าสู่การตั้งค่า** เพื่อเพิ่ม แก้ไข หรือลบข้อมูล กด OK หรือย้อนกลับสั้น ๆ เพื่อใช้งานดูกล้องตามปกติ หน้าดูกล้องปกติไม่มีปุ่มแก้ไขข้อมูล
+กด **OK ค้าง 1 วินาที** เพื่อเปิดเมนูเปลี่ยนรูปแบบตารางหรือสถานที่ สำหรับช่าง ให้เปิดเมนูนี้แล้วเลือก **ตั้งค่า** จากนั้นเลือก **เข้าสู่การตั้งค่า** เพื่อเพิ่ม แก้ไข หรือลบข้อมูล กด OK หรือย้อนกลับสั้น ๆ เพื่อใช้งานดูกล้องตามปกติ หน้าดูกล้องปกติไม่มีปุ่มแก้ไขข้อมูล
 
 Sixteen streams requires enough hardware decoders. Start with four tiles on smaller sticks. Suggested initial substream encoding: H.264, roughly 640×360 or 640×480, 5–10 fps and 256–512 kbps; tune the NVR itself. No measured stream-count or latency guarantee is made.
 
 ## Setup and recorder editing
 
-1. Hold **OK for one second**, then hold **Back for three seconds inside the viewing menu**. Confirm technician setup and create a location, such as **Shop**.
+1. Hold **OK for one second**, then choose **ตั้งค่า** (Settings) in the viewing menu. Confirm technician setup and create a location, such as **Shop**.
 2. Choose **เพิ่มเครื่องบันทึก**. One NVR is the primary setup for each location; an existing recorder gets **แก้ไขเครื่องบันทึก** instead. Additional NVRs and standalone/custom cameras are available under **ขั้นสูง**.
 3. Enter the recorder address, RTSP port, credentials and channel range.
 4. **Test & save** previews the first substream on the TV. **Save channels** becomes available after a decoded video frame.
@@ -115,6 +115,7 @@ These are native emulator screenshots using deliberately offline fixture cameras
 
 - [0.4.1 validation](docs/validation-0.4.1.md) records 28 unit methods, 12 native methods and release-verifier checks.
 
+- [0.4.3 setup/HEVC validation](docs/validation-0.4.3.md) records the simpler setup flow, H.265 regression and profile-persistence checks.
 - [0.4.2 Mi Box validation](docs/validation-0.4.2.md) records 34 unit methods and 14 native methods, including controls without a Menu button.
 
 Toolchain: JDK 17, pinned Gradle wrapper 8.11.1, AGP 8.9.2, SDK 35, Media3 1.8.0. Use `./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease` (`.\gradlew.bat` on Windows). See [CONTRIBUTING.md](CONTRIBUTING.md) for all checks. Historical validation records each named version; it does not establish physical-device compatibility for 0.4.2.

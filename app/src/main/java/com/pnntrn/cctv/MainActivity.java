@@ -55,10 +55,6 @@ public final class MainActivity extends Activity {
         if (started && !managing && viewingMenu == null && technicianConfirmation == null && hasWindowFocus()
                 && remote.held(TvViewingState.Key.OK, android.os.SystemClock.uptimeMillis())) viewingMenu();
     };
-    private final Runnable backHold = () -> {
-        if (viewingMenu != null && viewingInputFocused()
-                && remote.held(TvViewingState.Key.VIEWING_BACK, android.os.SystemClock.uptimeMillis())) confirmTechnician();
-    };
     private ArrayList<Camera> originalOrder;
     private Button layoutButton, nextButton;
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -172,7 +168,7 @@ public final class MainActivity extends Activity {
                 : viewingMenu.isShowing() && viewingMenu.getWindow().getDecorView().hasWindowFocus();
     }
     private void cancelRemoteHolds() {
-        ui.removeCallbacks(menuHold); ui.removeCallbacks(okHold); ui.removeCallbacks(backHold);
+        ui.removeCallbacks(menuHold); ui.removeCallbacks(okHold);
         remote.cancelHolds();
     }
     private void confirmTechnician() {
@@ -214,10 +210,11 @@ public final class MainActivity extends Activity {
         hint.setPadding(dp(24), dp(8), dp(24), dp(16));
         AlertDialog menu = dialogBuilder().setTitle(getString(R.string.tv_viewing_menu))
                 .setView(hint)
-                .setItems(new String[]{getString(R.string.tv_camera_grid), getString(R.string.tv_grid_size), getString(R.string.tv_switch_location)}, (d, which) -> {
+                .setItems(new String[]{getString(R.string.tv_camera_grid), getString(R.string.tv_grid_size), getString(R.string.tv_switch_location), getString(R.string.tv_settings)}, (d, which) -> {
                     if (which == 0 && fullscreen >= 0) { page = fullscreen / current.grid; fullscreen = -1; render(); }
                     if (which == 1) layoutPicker();
                     if (which == 2) locationPicker();
+                    if (which == 3) confirmTechnician();
                 }).create();
         viewingMenu = menu;
         menu.setOnDismissListener(d -> { viewingMenu = null; cancelRemoteHolds(); revealChrome(); });
@@ -493,14 +490,9 @@ public final class MainActivity extends Activity {
     private boolean dispatchViewingBack(KeyEvent event) {
         long now = android.os.SystemClock.uptimeMillis();
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
-            if (event.getRepeatCount() == 0) {
-                remote.down(TvViewingState.Key.VIEWING_BACK, now);
-                ui.postDelayed(backHold, TvViewingState.BACK_HOLD_MS);
-            } else if (remote.held(TvViewingState.Key.VIEWING_BACK, now)) confirmTechnician();
+            if (event.getRepeatCount() == 0) remote.down(TvViewingState.Key.VIEWING_BACK, now);
         } else if (event.getAction() == KeyEvent.ACTION_UP) {
-            ui.removeCallbacks(backHold);
             if (event.isCanceled()) remote.cancel(TvViewingState.Key.VIEWING_BACK);
-            else if (remote.held(TvViewingState.Key.VIEWING_BACK, now)) confirmTechnician();
             if (remote.up(TvViewingState.Key.VIEWING_BACK, now) && viewingMenu != null) viewingMenu.dismiss();
         }
         return true;

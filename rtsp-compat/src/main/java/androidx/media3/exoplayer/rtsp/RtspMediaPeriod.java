@@ -700,8 +700,9 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
       // Normally track selection triggers SETUP, but selection itself waits for codec format.
       boolean needsInBandConfiguration = false;
       for (RtspMediaTrack track : tracks) {
-        needsInBandConfiguration |= androidx.media3.common.MimeTypes.VIDEO_H264.equals(
+        needsInBandConfiguration |= (androidx.media3.common.MimeTypes.VIDEO_H264.equals(
             track.payloadFormat.format.sampleMimeType)
+            || androidx.media3.common.MimeTypes.VIDEO_H265.equals(track.payloadFormat.format.sampleMimeType))
             && track.payloadFormat.format.initializationData.isEmpty();
       }
       inBandLiveStartup = needsInBandConfiguration && timing.isLive();

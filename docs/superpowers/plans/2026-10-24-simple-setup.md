@@ -17,10 +17,16 @@ Long OK release must not select Settings. Settings must not enter editing withou
 
 ## Task 1: Tests and implementation
 
-- [ ] Modify ViewingFlowTest first-setup method: require visible ตั้งค่า, select by D-pad, verify safe default and cancel/confirm, long Back closes without setup. Push test-only change and observe expected native RED in CI (no local ADB).
-- [ ] Add Settings item and Thai hints in MainActivity/strings_tv; remove Back hold runnable/action, retain release-only dispatch and cancellation. Change TvViewingState Back to release-only; adapt unit regression to assert long Back never qualifies as hold.
-- [ ] Add native encrypted-profile close/relaunch regression with synthetic NVR/password, verifying identity/grid/cameras and no plaintext file. Inspect 0.4.1→0.4.2 persistence diff, no speculative storage fix.
-- [ ] Run unit/lint/debug/release/AndroidTest build and core/digest/updater/release-verifier checks. Independently review final diff.
+- [x] Modify ViewingFlowTest first-setup method: require visible ตั้งค่า, select by D-pad, verify safe default and cancel/confirm, long Back closes without setup. Push test-only change and observe expected native RED in CI (no local ADB).
+- [x] Add Settings item and Thai hints in MainActivity/strings_tv; remove Back hold runnable/action, retain release-only dispatch and cancellation. Change TvViewingState Back to release-only; adapt unit regression to assert long Back never qualifies as hold.
+- [x] Add native encrypted-profile close/relaunch regression with synthetic NVR/password, verifying identity/grid/cameras and no plaintext file. Inspect 0.4.1→0.4.2 persistence diff, no speculative storage fix.
+- [x] Run unit/lint/debug/release/AndroidTest build and core/digest/updater/release-verifier checks. Independently review final diff.
+
+## Playback extension (owner-authorized during execution)
+
+- [x] Reproduce H265 without fmtp unit failure; actual recorder SDP confirms H265, no fmtp. Test-only fixture independently generated with FFmpeg/libx265.
+- [x] Add bounded 8-second/4-MiB discovery, complete single/AP/FU parameter sets limited to 2 MiB, original RTP replay and format-aware RTSP startup. Preserve H264/out-of-band paths and reject unsupported DONL.
+- [ ] Native HEVC direct decoder, out-of-band control, missing-fmtp grid/fullscreen must render real first frame and release connection. No local ADB; run in CI.
 
 ## Task 2: Publish
 

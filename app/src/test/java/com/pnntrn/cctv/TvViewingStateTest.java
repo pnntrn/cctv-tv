@@ -57,15 +57,15 @@ public class TvViewingStateTest {
         assertFalse(state.up(TvViewingState.Key.OK, 1099));
         assertFalse(state.held(TvViewingState.Key.OK, 4000));
     }
-    @Test public void viewingMenuBackNeedsThreeSecondsAndNeverAlsoDismisses() {
+    @Test public void viewingMenuBackClosesOnReleaseAndNeverBecomesAHoldAction() {
         TvViewingState state = new TvViewingState();
         state.down(TvViewingState.Key.VIEWING_BACK, 100);
-        assertFalse(state.held(TvViewingState.Key.VIEWING_BACK, 3099));
-        assertTrue(state.up(TvViewingState.Key.VIEWING_BACK, 3099));
-        state.down(TvViewingState.Key.VIEWING_BACK, 4000);
-        assertTrue(state.held(TvViewingState.Key.VIEWING_BACK, 7000));
-        assertFalse(state.held(TvViewingState.Key.VIEWING_BACK, 7100));
-        assertFalse(state.up(TvViewingState.Key.VIEWING_BACK, 7200));
+        assertFalse(state.held(TvViewingState.Key.VIEWING_BACK, 3100));
+        assertFalse(state.held(TvViewingState.Key.VIEWING_BACK, 10100));
+        assertTrue(state.up(TvViewingState.Key.VIEWING_BACK, 10100));
+        assertFalse(state.up(TvViewingState.Key.VIEWING_BACK, 10101));
+        state.down(TvViewingState.Key.VIEWING_BACK, 11000);
+        assertTrue(state.up(TvViewingState.Key.VIEWING_BACK, 11001));
     }
     @Test public void cancellationStopsEveryHoldAndShortAction() {
         for (TvViewingState.Key key : TvViewingState.Key.values()) {
@@ -82,7 +82,7 @@ public class TvViewingStateTest {
         for (TvViewingState.Key key : TvViewingState.Key.values()) {
             TvViewingState state = new TvViewingState();
             state.down(key, 100);
-            assertTrue(state.held(key, 3100));
+            if (key != TvViewingState.Key.VIEWING_BACK) assertTrue(state.held(key, 3100));
             state.cancelHolds();
             assertTrue(state.suppressPending(key, TvViewingState.KeyPhase.REPEAT));
             assertTrue(state.suppressPending(key, TvViewingState.KeyPhase.REPEAT));

@@ -279,8 +279,17 @@ import com.google.common.collect.ImmutableMap;
         if (fmtpParameters.containsKey(PARAMETER_SPROP_PARAMS)) processH264FmtpAttribute(formatBuilder, fmtpParameters);
         break;
       case MimeTypes.VIDEO_H265:
-        checkArgument(!fmtpParameters.isEmpty(), "missing attribute fmtp");
-        processH265FmtpAttribute(formatBuilder, fmtpParameters);
+        // RFC7798 permits in-band VPS/SPS/PPS. Reject decoding-order fields that our
+        // RTP reader cannot consume even when the SDP omits the parameter sets.
+        if (fmtpParameters.containsKey(PARAMETER_H265_SPROP_MAX_DON_DIFF)) {
+          checkArgument(Integer.parseInt(checkNotNull(fmtpParameters.get(PARAMETER_H265_SPROP_MAX_DON_DIFF))) == 0,
+              "unsupported SDP H265 decoding-order numbers");
+        }
+        if (fmtpParameters.containsKey(PARAMETER_H265_SPROP_VPS)
+            && fmtpParameters.containsKey(PARAMETER_H265_SPROP_SPS)
+            && fmtpParameters.containsKey(PARAMETER_H265_SPROP_PPS)) {
+          processH265FmtpAttribute(formatBuilder, fmtpParameters);
+        }
         break;
       case MimeTypes.VIDEO_VP8:
         // VP8 never uses fmtp width and height attributes (RFC7741 Section 6.2), setting default

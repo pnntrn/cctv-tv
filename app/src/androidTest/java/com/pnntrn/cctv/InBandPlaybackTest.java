@@ -26,32 +26,38 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import static org.junit.Assert.*;
 
-/** Native decoder control and missing-fmtp regression, using the same synthetic H264 bytes. */
+/** Native decoder controls and missing-fmtp regressions using synthetic H264 and H265 video. */
 @UnstableApi
 @RunWith(AndroidJUnit4.class)
 public final class InBandPlaybackTest {
     /** The RTSP oracle must itself decode on Android, independently of the player under test. */
-    @Test public void fixtureDecodesWithoutRtspOrExoPlayer() throws Exception {
+    @Test public void fixtureDecodesWithoutRtspOrExoPlayer() throws Exception { decodeFixture(false); }
+    @Test public void hevcFixtureDecodesWithoutRtspOrExoPlayer() throws Exception { decodeFixture(true); }
+    private void decodeFixture(boolean hevc) throws Exception {
         byte[] fixture;
         try (InputStream in = InstrumentationRegistry.getInstrumentation().getContext()
-                .getAssets().open("inband.h264")) {
+                .getAssets().open(hevc ? "inband.h265" : "inband.h264")) {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             byte[] buffer = new byte[4096];
             int count;
             while ((count = in.read(buffer)) != -1) bytes.write(buffer, 0, count);
             fixture = bytes.toByteArray();
         }
-        List<List<byte[]>> pictures = LoopbackRtspServer.accessUnits(fixture);
-        android.media.MediaFormat format = android.media.MediaFormat.createVideoFormat("video/avc", 320, 180);
+        List<List<byte[]>> pictures = LoopbackRtspServer.accessUnits(fixture, hevc);
+        android.media.MediaFormat format = android.media.MediaFormat.createVideoFormat(hevc ? "video/hevc" : "video/avc", 320, 180);
+        ByteArrayOutputStream hevcConfig = new ByteArrayOutputStream();
         for (byte[] nal : pictures.get(0)) {
-            int type = nal[0] & 31;
-            if (type == 7 || type == 8) {
+            int type = hevc ? (nal[0] >> 1) & 63 : nal[0] & 31;
+            if (hevc && type >= 32 && type <= 34) {
+                hevcConfig.write(new byte[]{0, 0, 0, 1}); hevcConfig.write(nal);
+            } else if (!hevc && (type == 7 || type == 8)) {
                 java.nio.ByteBuffer config = java.nio.ByteBuffer.allocate(nal.length + 4);
                 config.putInt(1).put(nal).flip();
                 format.setByteBuffer(type == 7 ? "csd-0" : "csd-1", config);
             }
         }
-        android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType("video/avc");
+        if (hevc) format.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(hevcConfig.toByteArray()));
+        android.media.MediaCodec codec = android.media.MediaCodec.createDecoderByType(hevc ? "video/hevc" : "video/avc");
         int submitted = 0, decoded = 0;
         try {
             codec.configure(format, null, null, 0);
@@ -82,7 +88,11 @@ public final class InBandPlaybackTest {
     @Test public void outOfBandControlDecodesTheSameSyntheticVideo() throws Exception { play(true,false); }
     @Test public void missingFmtpDecodesFirstFrameFromInterleavedInBandH264() throws Exception { play(false,false); }
     @Test public void missingFmtpFullscreenDecodesAndReleases() throws Exception { play(false,true); }
-    private void play(boolean withFmtp, boolean fullscreen) throws Exception {
+    @Test public void hevcOutOfBandControlDecodesTheSameSyntheticVideo() throws Exception { play(true, false, true); }
+    @Test public void missingFmtpDecodesFirstFrameFromInterleavedInBandH265() throws Exception { play(false, false, true); }
+    @Test public void missingFmtpHevcFullscreenDecodesAndReleases() throws Exception { play(false, true, true); }
+    private void play(boolean withFmtp, boolean fullscreen) throws Exception { play(withFmtp, fullscreen, false); }
+    private void play(boolean withFmtp, boolean fullscreen, boolean hevc) throws Exception {
         // Fail before launching: MainActivity automatically starts saved cameras. Use a clean
         // instrumentation install; never overwrite profiles or contact a configured camera.
         assertTrue("Run on a clean test install with no saved locations",
@@ -90,7 +100,7 @@ public final class InBandPlaybackTest {
                         .load().isEmpty());
         byte[] fixture;
         try (InputStream in = InstrumentationRegistry.getInstrumentation().getContext()
-                .getAssets().open("inband.h264")) {
+                .getAssets().open(hevc ? "inband.h265" : "inband.h264")) {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             byte[] buffer = new byte[4096];
             int n;
@@ -101,7 +111,7 @@ public final class InBandPlaybackTest {
         AtomicReference<PlaybackFailure> failure = new AtomicReference<>();
         AtomicReference<String> diagnostics = new AtomicReference<>("no failure callback");
         AtomicReference<StreamTile> tile = new AtomicReference<>();
-        try (LoopbackRtspServer server = new LoopbackRtspServer(fixture, withFmtp)) {
+        try (LoopbackRtspServer server = new LoopbackRtspServer(fixture, withFmtp, hevc)) {
             try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
                 scenario.onActivity(activity -> {
                     FrameLayout content = new FrameLayout(activity);
@@ -154,7 +164,7 @@ public final class InBandPlaybackTest {
                 assertNull("Playback failed before first frame", failure.get());
                 assertNull("Loopback server failed", server.failure.get());
                 assertTrue("Expected single-NAL RTP packets", server.singleNalPackets > 0);
-                assertTrue("Expected fragmented FU-A RTP packets", server.fuPackets > 0);
+                assertTrue("Expected fragmented RTP packets", server.fuPackets > 0);
                 InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> tile.get().release());
                 server.control.join(2000);
                 assertFalse("Releasing the tile must close its live RTSP connection",server.control.isAlive());
@@ -174,6 +184,7 @@ public final class InBandPlaybackTest {
         private final Thread control;
         private final List<List<byte[]>> frames;
         private final String fmtp;
+        private final boolean hevc;
         private final Object outputLock = new Object();
         final AtomicReference<Throwable> failure = new AtomicReference<>();
         private volatile Socket client;
@@ -187,15 +198,21 @@ public final class InBandPlaybackTest {
         private int sequence = 1000;
         private long timestamp = 90000;
 
-        LoopbackRtspServer(byte[] annexB, boolean withFmtp) throws IOException {
-            frames = accessUnits(annexB);
-            String sps=null,pps=null;
-            for(byte[] nal:frames.get(0)){
-                if((nal[0]&31)==7)sps=android.util.Base64.encodeToString(nal,android.util.Base64.NO_WRAP);
-                if((nal[0]&31)==8)pps=android.util.Base64.encodeToString(nal,android.util.Base64.NO_WRAP);
+        LoopbackRtspServer(byte[] annexB, boolean withFmtp, boolean hevc) throws IOException {
+            this.hevc = hevc;
+            frames = accessUnits(annexB, hevc);
+            String vps = null, sps = null, pps = null;
+            for (byte[] nal : frames.get(0)) {
+                int type = hevc ? (nal[0] >> 1) & 63 : nal[0] & 31;
+                String encoded = android.util.Base64.encodeToString(nal, android.util.Base64.NO_WRAP);
+                if (hevc && type == 32) vps = encoded;
+                if (type == (hevc ? 33 : 7)) sps = encoded;
+                if (type == (hevc ? 34 : 8)) pps = encoded;
             }
-            if(sps==null || pps==null)throw new IOException("Synthetic fixture lacks parameter sets");
-            fmtp=withFmtp?"a=fmtp:96 packetization-mode=1;sprop-parameter-sets="+sps+","+pps+"\r\n":"";
+            if (sps == null || pps == null || (hevc && vps == null)) throw new IOException("Synthetic fixture lacks parameter sets");
+            fmtp = !withFmtp ? "" : hevc
+                    ? "a=fmtp:96 sprop-vps=" + vps + ";sprop-sps=" + sps + ";sprop-pps=" + pps + "\r\n"
+                    : "a=fmtp:96 packetization-mode=1;sprop-parameter-sets=" + sps + "," + pps + "\r\n";
             listener = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"));
             control = new Thread(this::serve, "inband-rtsp-control");
             control.start();
@@ -239,8 +256,9 @@ public final class InBandPlaybackTest {
                             String sdp = "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\n"
                                     + "s=Synthetic in-band H264\r\nc=IN IP4 127.0.0.1\r\n"
                                     + "t=0 0\r\na=control:*\r\na=range:npt=0-\r\n"
-                                    + "m=video 0 RTP/AVP 96\r\na=rtpmap:96 H264/90000\r\n"
-                                    + "a=control:trackID=1\r\n" + fmtp; // Regression omits fmtp; control uses real fixture SPS/PPS.
+                                    + "m=video 0 RTP/AVP 96\r\na=rtpmap:96 " + (hevc ? "H265" : "H264") + "/90000\r\n"
+                                    + "a=control:trackID=1\r\n" + fmtp
+                                    + (hevc ? "m=audio 0 RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\na=control:trackID=2\r\n" : "");
                             respond(cseq, "Content-Type: application/sdp\r\nContent-Base: "
                                     + url() + "\r\n", sdp);
                             break;
@@ -301,14 +319,19 @@ public final class InBandPlaybackTest {
                                 packet(nal, last);
                                 singleNalPackets++;
                             } else {
-                                for (int offset = 1; offset < nal.length;) {
-                                    int count = Math.min(998, nal.length - offset);
+                                int headerSize = hevc ? 2 : 1;
+                                for (int offset = headerSize; offset < nal.length;) {
+                                    int count = Math.min(997, nal.length - offset);
                                     boolean end = offset + count == nal.length;
-                                    byte[] fu = new byte[count + 2];
-                                    fu[0] = (byte) ((nal[0] & 0xe0) | 28);
-                                    fu[1] = (byte) ((nal[0] & 31) | (offset == 1 ? 0x80 : 0)
-                                            | (end ? 0x40 : 0));
-                                    System.arraycopy(nal, offset, fu, 2, count);
+                                    byte[] fu = new byte[count + (hevc ? 3 : 2)];
+                                    if (hevc) {
+                                        fu[0] = (byte) ((nal[0] & 0x81) | (49 << 1)); fu[1] = nal[1];
+                                        fu[2] = (byte) (((nal[0] >> 1) & 63) | (offset == 2 ? 0x80 : 0) | (end ? 0x40 : 0));
+                                    } else {
+                                        fu[0] = (byte) ((nal[0] & 0xe0) | 28);
+                                        fu[1] = (byte) ((nal[0] & 31) | (offset == 1 ? 0x80 : 0) | (end ? 0x40 : 0));
+                                    }
+                                    System.arraycopy(nal, offset, fu, hevc ? 3 : 2, count);
                                     packet(fu, last && end);
                                     fuPackets++;
                                     offset += count;
@@ -367,7 +390,7 @@ public final class InBandPlaybackTest {
             while (count-- > 0) if (input.read() == -1) throw new EOFException();
         }
 
-        private static List<List<byte[]>> accessUnits(byte[] file) throws IOException {
+        private static List<List<byte[]>> accessUnits(byte[] file, boolean hevc) throws IOException {
             List<byte[]> nals = new ArrayList<>();
             int start = -1;
             for (int i = 0; i < file.length - 3; i++) {
@@ -385,14 +408,14 @@ public final class InBandPlaybackTest {
             boolean hasPicture = false;
             // This fixture repeats SPS/PPS before each IDR, with three slices per picture.
             for (byte[] nal : nals) {
-                int type = nal[0] & 31;
-                if (type == 7 && hasPicture) {
+                int type = hevc ? (nal[0] >> 1) & 63 : nal[0] & 31;
+                if ((hevc ? type == 35 : type == 7) && hasPicture) {
                     frames.add(frame);
                     frame = new ArrayList<>();
                     hasPicture = false;
                 }
                 frame.add(nal);
-                if (type == 1 || type == 5) hasPicture = true;
+                if (hevc ? type < 32 : (type == 1 || type == 5)) hasPicture = true;
             }
             if (hasPicture) frames.add(frame);
             if (frames.isEmpty()) throw new IOException("Fixture has no pictures");

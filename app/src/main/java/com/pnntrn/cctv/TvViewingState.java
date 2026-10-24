@@ -6,9 +6,9 @@ import java.util.List;
 final class TvViewingState {
     static final long OK_HOLD_MS = 1000;
     static final long MENU_HOLD_MS = 3000;
-    static final long BACK_HOLD_MS = 3000;
     enum Key {
-        OK(OK_HOLD_MS), MENU(MENU_HOLD_MS), VIEWING_BACK(BACK_HOLD_MS);
+        // Back is release-only; it never triggers a hold action.
+        OK(OK_HOLD_MS), MENU(MENU_HOLD_MS), VIEWING_BACK(Long.MAX_VALUE);
         final long holdMillis;
         Key(long holdMillis) { this.holdMillis = holdMillis; }
     }

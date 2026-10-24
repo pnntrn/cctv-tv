@@ -381,6 +381,76 @@ public class ViewingFlowTest {
             context.getSharedPreferences("MainActivity", 0).edit().remove("location").commit();
         }
     }
+    @Test public void encryptedRecorderProfilesSurviveClosingAndRelaunching() throws Exception {
+        var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        assertTrue(android.os.Build.FINGERPRINT.contains("generic") || android.os.Build.HARDWARE.contains("ranchu") || android.os.Build.HARDWARE.contains("goldfish"));
+        ProfileStore store = new ProfileStore(context);
+        assertTrue("Requires clean emulator profiles", store.load().isEmpty());
+        Location location = new Location("Saved location"); location.grid = 4; location.tcp = true;
+        Nvr recorder = new Nvr(); recorder.name = "Saved NVR"; recorder.host = "127.0.0.1";
+        recorder.port = 9; recorder.username = "synthetic-user"; recorder.password = "synthetic-test-secret";
+        recorder.count = 11; recorder.prefix = "Saved camera"; recorder.apply(location);
+        location.cameras.get(8).name = "Saved custom camera";
+        location.lastPage = 2; location.lastCameraId = location.cameras.get(8).id;
+        ArrayList<Location> expected = new ArrayList<>(); expected.add(location);
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        try {
+            store.save(expected);
+            for (int launch = 0; launch < 2; launch++) {
+                try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+                    assertTrue(device.wait(Until.hasObject(By.descStartsWith("Saved custom camera,")), 5000));
+                    scenario.onActivity(a -> {
+                        assertTrue((Boolean) value(a, "storageOkay"));
+                        assertEquals(location.id, ((Location) value(a, "current")).id);
+                        assertEquals(8, value(a, "focusedCamera")); assertEquals(2, value(a, "page"));
+                    });
+                    scenario.recreate();
+                    scenario.onActivity(a -> assertEquals(location.id, ((Location) value(a, "current")).id));
+                }
+                Location saved = new ProfileStore(context).load().get(0);
+                assertEquals(location.id, saved.id); assertEquals(location.name, saved.name);
+                assertEquals(location.grid, saved.grid); assertEquals(location.tcp, saved.tcp);
+                assertEquals(2, saved.lastPage); assertEquals(location.lastCameraId, saved.lastCameraId);
+                assertEquals(1, saved.devices.size());
+                assertEquals(ProfileStore.nvrJson(recorder, true).toString(), ProfileStore.nvrJson(saved.devices.get(0), true).toString());
+                assertEquals(11, saved.cameras.size());
+                for (int i = 0; i < 11; i++) {
+                    Camera before = location.cameras.get(i), after = saved.cameras.get(i);
+                    assertEquals(before.id, after.id); assertEquals(before.name, after.name);
+                    assertEquals(before.deviceId, after.deviceId); assertEquals(before.channel, after.channel);
+                    assertEquals(before.subUrl, after.subUrl); assertEquals(before.mainUrl, after.mainUrl);
+                }
+                byte[] encrypted = java.nio.file.Files.readAllBytes(new File(context.getFilesDir(), "locations.enc").toPath());
+                assertEquals(1, encrypted[0]);
+                String raw = new String(encrypted, java.nio.charset.StandardCharsets.ISO_8859_1);
+                assertFalse(raw.contains(recorder.password)); assertFalse(raw.contains(location.name));
+            }
+        } finally {
+            store.save(new ArrayList<>());
+            context.getSharedPreferences("MainActivity", 0).edit().remove("location").commit();
+        }
+    }
+    @Test public void unreadableProfilesShowErrorAndAreNotOverwrittenOnClose() throws Exception {
+        var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        assertTrue(android.os.Build.FINGERPRINT.contains("generic") || android.os.Build.HARDWARE.contains("ranchu") || android.os.Build.HARDWARE.contains("goldfish"));
+        ProfileStore store = new ProfileStore(context);
+        assertTrue("Requires clean emulator profiles", store.load().isEmpty());
+        File file = new File(context.getFilesDir(), "locations.enc");
+        byte[] unsupported = new byte[29]; unsupported[0] = 99;
+        try {
+            java.nio.file.Files.write(file.toPath(), unsupported);
+            try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+                UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+                assertTrue(device.wait(Until.hasObject(By.text(context.getString(R.string.tv_cannot_open_saved_locations))), 5000));
+                scenario.onActivity(a -> assertFalse((Boolean) value(a, "storageOkay")));
+            }
+            assertArrayEquals("Opening/closing unreadable profiles must preserve the original file",
+                    unsupported, java.nio.file.Files.readAllBytes(file.toPath()));
+        } finally {
+            store.save(new ArrayList<>());
+            context.getSharedPreferences("MainActivity", 0).edit().remove("location").commit();
+        }
+    }
     private static void recreateWithProfileChange(ActivityScenario<MainActivity> scenario, ProfileStore store,
             Consumer<ArrayList<Location>> change) {
         Application application = (Application) InstrumentationRegistry.getInstrumentation().getTargetContext().getApplicationContext();

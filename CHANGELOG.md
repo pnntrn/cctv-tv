@@ -2,6 +2,13 @@
 
 Release candidates remain subject to the physical-device checks listed below. Source history is available in [GitHub releases](https://github.com/pnntrn/cctv-tv/releases).
 
+## 0.4.3 — release candidate
+
+- Simplify Mi Box setup: hold OK for one second → choose **ตั้งค่า** → existing safe confirmation. Back closes normally and never requests setup.
+- Support H.265/HEVC with no SDP fmtp by discovering real in-band VPS/SPS/PPS with bounded startup; preserve out-of-band HEVC and H.264 paths. Saving still requires a decoded frame.
+- Add synthetic HEVC decoder/RTSP controls and encrypted-profile reopen/error-preservation regressions. No profile migration, reset or production dependency change.
+- Keep package/key/profile identity; version code 1011. Owner-device diagnosis confirmed H.265 without fmtp and an existing location with no cameras. Historical missing-camera cause remains unconfirmed; verify the candidate on that device.
+
 ## 0.4.2 — release candidate
 
 - Support Mi Box remotes without Menu: hold OK for one second for viewing options; inside that menu, hold Back for three seconds to request technician setup, then confirm.
