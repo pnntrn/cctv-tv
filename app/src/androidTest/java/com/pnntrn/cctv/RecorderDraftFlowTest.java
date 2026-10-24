@@ -258,4 +258,47 @@ public class RecorderDraftFlowTest {
         }
     }
 
+    @Test public void streamTestsKeepSubSaveGateAndRejectOldOrFailedCallbacks() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        ArrayList<Location> locations = new ArrayList<>(); locations.add(new Location("Stream check fixture"));
+        new ProfileStore(context).save(locations);
+        final StreamTile.Listener[] late = new StreamTile.Listener[1];
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(a -> { try {
+                open(a); field(a,"IP address or hostname").setText("127.0.0.1"); field(a,"RTSP port").setText("9");
+                ((AlertDialog)get(a,"recorderEditor")).getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+                AlertDialog preview = (AlertDialog)get(a,"connectionPreview");
+                View decor = preview.getWindow().getDecorView();
+                View sub = decor.findViewWithTag("stream-test-sub"), main = decor.findViewWithTag("stream-test-main");
+                assertNotNull("Technician preview must offer a separate substream test", sub);
+                assertNotNull("Technician preview must offer a separate mainstream test", main);
+                StreamTile.Listener oldSub = (StreamTile.Listener)get(((ArrayList<?>)get(a,"streams")).get(0),"listener");
+                main.performClick();
+                StreamTile.Listener mainListener = (StreamTile.Listener)get(((ArrayList<?>)get(a,"streams")).get(0),"listener");
+                mainListener.onFirstFrame();
+                assertFalse("A verified main stream must never unlock an unverified substream", preview.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled());
+                sub.performClick(); oldSub.onFirstFrame();
+                assertFalse("Replaced player callback must not verify the new test", preview.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled());
+                StreamTile.Listener freshSub = (StreamTile.Listener)get(((ArrayList<?>)get(a,"streams")).get(0),"listener");
+                freshSub.onFirstFrame(); assertTrue(preview.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled());
+                main.performClick();
+                StreamTile.Listener failedMain = (StreamTile.Listener)get(((ArrayList<?>)get(a,"streams")).get(0),"listener");
+                failedMain.onFailure(PlaybackFailure.DECODER);
+                assertTrue("Main failure is separate from an already verified substream", preview.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled());
+                assertTrue(((android.widget.TextView)decor.findViewWithTag("stream-result-main")).getText().toString().contains(context.getString(R.string.common_playback_decoder)));
+                sub.performClick(); assertFalse(preview.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled());
+                late[0] = (StreamTile.Listener)get(((ArrayList<?>)get(a,"streams")).get(0),"listener");
+                late[0].onFailure(PlaybackFailure.NETWORK); late[0].onFirstFrame();
+                assertFalse("A failed test cannot recover from a late first-frame callback", preview.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled());
+                assertEquals("Only one preview player may be retained", 1, ((ArrayList<?>)get(a,"streams")).size());
+            } catch (Exception e) { throw new AssertionError(e); } });
+            scenario.moveToState(Lifecycle.State.CREATED);
+            scenario.onActivity(a -> { try {
+                late[0].onFirstFrame();
+                assertNull(get(a,"connectionPreview")); assertFalse((Boolean)get(a,"previewVerified"));
+                assertTrue(((ArrayList<?>)get(a,"streams")).isEmpty());
+            } catch (Exception e) { throw new AssertionError(e); } });
+        }
+    }
+
 }
