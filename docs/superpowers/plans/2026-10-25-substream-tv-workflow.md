@@ -52,3 +52,6 @@ Ownership: MainActivity.java, RecorderDraft.java if required, strings and tests/
 - Ruling: Back means CCTV grid, not Android launcher; owner asked implementation after clarification proposal, so use the least disruptive interpretation.
 - Ruling: Work in the clean existing checkout on a new feature branch to preserve its configured Android tooling; no main/shared branch edits.
 - Ruling: The owner's direct review-and-implement request selects continuous execution of the proposed flow, rather than another design approval pause.
+- Ruling: Keep the current visible Settings plus confirmation entry; Back, including held Back, returns safely rather than opening technician setup. This follows the latest Back-home request and existing remote safety tests.
+- Task1: complete14b44d6+c436cd9. Foundation tests RED→GREEN;38app host tests passed before integration. Fresh review found partial-six-page Down navigation; fix-round1 added two failing regressions then passed23 pure geometry/hold tests. Scoped re-review ADDRESSED, no material new issue.
+- Playback:90c6a64 removed VLC and forced SUB. Distinct-SUB/MAIN routing RED decoded wrong codec; GREEN17 playback+2initialUI tests passed35.848s. Includes actual frames, no MAIN connection/fallback, privacy and release.

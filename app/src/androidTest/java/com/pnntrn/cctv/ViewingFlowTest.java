@@ -293,11 +293,14 @@ public class ViewingFlowTest {
                 int token = (Integer) value(a, "fullscreenToken");
                 long down = SystemClock.uptimeMillis();
                 a.dispatchKeyEvent(new KeyEvent(down, down, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0));
-                assertEquals("OK must wait for release before toggling the fullscreen stream", sub, value(a, "fullSub"));
+                assertEquals("OK never changes SUB selection", sub, value(a, "fullSub"));
                 a.dispatchKeyEvent(new KeyEvent(down, down, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 1));
                 a.dispatchKeyEvent(new KeyEvent(down, down + 1, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER, 0));
-                assertEquals(!sub, value(a, "fullSub"));
-                assertEquals("One short OK must render exactly one stream change", token + 1, value(a, "fullscreenToken"));
+                assertEquals(true, value(a, "fullSub"));
+                assertEquals("Short OK reveals toolbar without restarting playback", token, value(a, "fullscreenToken"));
+                assertTrue(((View)value(a,"layoutControl")).hasFocus());
+                a.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_DPAD_DOWN));
+                a.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP,KeyEvent.KEYCODE_DPAD_DOWN));
             });
             Object[] original = new Object[2];
             scenario.onActivity(a -> {

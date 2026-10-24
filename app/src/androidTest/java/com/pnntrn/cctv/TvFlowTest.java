@@ -60,7 +60,10 @@ public class TvFlowTest {
             if(close != null) { d.pressBack(); }
             assertTrue(d.wait(Until.hasObject(By.text("แก้ไขเครื่องบันทึก")),5000));
             // Reordering now belongs exclusively to technician setup, using the same saved IDs.
-            d.wait(Until.findObject(By.desc("ย้าย Camera 1 ลง")),5000).click();
+            d.wait(Until.findObject(By.text("จัดเรียงและซ่อนช่องกล้อง")),5000).click();
+            assertTrue(d.wait(Until.hasObject(By.descStartsWith("Camera 1,").focused(true)),5000));
+            d.pressDPadCenter();d.pressDPadRight();d.pressDPadCenter();
+            d.wait(Until.findObject(By.text("บันทึกการจัดเรียง")),5000).click();
             d.wait(Until.findObject(By.text("ดูกล้อง")),5000).click();
             assertTrue(d.wait(Until.hasObject(By.descStartsWith("Camera ")),5000));
             assertEquals(movedId[0],store.load().get(0).cameras.get(movedTo[0]).id);

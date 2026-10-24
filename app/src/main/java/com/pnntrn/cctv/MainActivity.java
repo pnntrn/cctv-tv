@@ -56,7 +56,14 @@ public final class MainActivity extends Activity {
                 && remote.held(TvViewingState.Key.OK, android.os.SystemClock.uptimeMillis())) viewingMenu();
     };
     private ArrayList<Camera> originalOrder;
-    private Button layoutButton, nextButton;
+    private View viewingBar;
+    private android.widget.ImageButton layoutControl, locationControl;
+    private java.util.Map<String,Boolean> originalHidden;
+    private EditText recorderLocationName;
+    private Spinner recorderDefaultGrid;
+    private Location previousRecorderLocation;
+    private final Runnable leftHold = () -> openHeldShortcut(TvViewingState.Key.LEFT);
+    private final Runnable rightHold = () -> openHeldShortcut(TvViewingState.Key.RIGHT);
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Handler viewingSave = new Handler(Looper.getMainLooper());
     private int fullscreenToken;
@@ -85,6 +92,8 @@ public final class MainActivity extends Activity {
         recorderDraft.first = recorderFields[5].getText().toString();
         recorderDraft.count = recorderFields[6].getText().toString();
         recorderDraft.prefix = recorderFields[7].getText().toString();
+        if(recorderLocationName!=null)recorderDraft.locationName=recorderLocationName.getText().toString();
+        if(recorderDefaultGrid!=null)recorderDraft.defaultGrid=GridLayoutSpec.sizes()[recorderDefaultGrid.getSelectedItemPosition()];
         try { draftPreferences().edit().putString(recorderDraft.key(), recorderDraft.encode())
                 .putString("active", recorderDraft.key()).apply(); } catch (org.json.JSONException ignored) { }
     }
@@ -115,6 +124,12 @@ public final class MainActivity extends Activity {
                 releaseStreams(); fullscreen = -1; current = l; managing = true; page = 0; render();
                 editNvr(existing, CameraRules.Preset.valueOf(d.preset)); return;
             }
+            if(d.recorderId.isEmpty()){
+                previousRecorderLocation=current;current=new Location(d.locationId,d.locationName);
+                current.defaultGrid=d.defaultGrid;current.grid=d.defaultGrid;
+                draftPreferences().edit().putString(d.key(),encoded).apply();
+                managing=true;editNvr(null,CameraRules.Preset.valueOf(d.preset));
+            }
         } catch (Exception ignored) { /* Malformed/stale drafts never affect saved profiles. */ }
     }
     private void finishRecorderEditor(boolean discard) {
@@ -124,9 +139,13 @@ public final class MainActivity extends Activity {
         if (exit != null) exit.dismiss();
         SharedPreferences.Editor prefs = draftPreferences().edit().remove("active");
         if (discard) prefs.remove(recorderDraft.key());
+        else if(!locations.contains(current)){
+            prefs.putString("active",recorderDraft.key());
+            try{pendingRecorderDraft=recorderDraft.encode();}catch(org.json.JSONException ignored){ }
+        }
         prefs.apply(); recorderFields[4].setText("");
         AlertDialog d = recorderEditor; recorderEditor = null; recorderFields = null; recorderDraft = null;
-        d.dismiss(); if (started) render();
+        d.dismiss(); recorderLocationName=null;recorderDefaultGrid=null;restoreStagedLocation(); if (started) render();
     }
     private void askLeaveRecorder() {
         if (draftExitDialog != null && draftExitDialog.isShowing()) return;
@@ -146,7 +165,9 @@ public final class MainActivity extends Activity {
     }
     private final Runnable hideChrome = () -> setViewingChrome(false);
     private void setViewingChrome(boolean visible) {
+        if (!visible && viewingBar != null && viewingBar.hasFocus()) return;
         chromeVisible = visible;
+        if (viewingBar != null) viewingBar.setVisibility(visible ? View.VISIBLE : View.GONE);
         for (StreamTile stream : streams) stream.setChromeVisible(visible);
         if (fullHelp != null) fullHelp.setVisibility(visible ? View.VISIBLE : View.GONE);
         if (viewingHelp != null) viewingHelp.setVisibility(visible ? View.VISIBLE : View.GONE);
@@ -168,7 +189,7 @@ public final class MainActivity extends Activity {
                 : viewingMenu.isShowing() && viewingMenu.getWindow().getDecorView().hasWindowFocus();
     }
     private void cancelRemoteHolds() {
-        ui.removeCallbacks(menuHold); ui.removeCallbacks(okHold);
+        ui.removeCallbacks(menuHold); ui.removeCallbacks(okHold); ui.removeCallbacks(leftHold); ui.removeCallbacks(rightHold);
         remote.cancelHolds();
     }
     private void confirmTechnician() {
@@ -200,8 +221,8 @@ public final class MainActivity extends Activity {
             AlertDialog editor = recorderEditor; recorderEditor = null; recorderFields = null; recorderDraft = null; editor.dismiss();
         }
         if (draftExitDialog != null) { draftExitDialog.dismiss(); draftExitDialog = null; }
-        if (arranging) { current.cameras.clear(); current.cameras.addAll(originalOrder); }
-        closePairing(); technician = false; managing = false; arranging = false; grabbed = -1;
+        if (arranging) restoreArrangement();
+        restoreStagedLocation(); closePairing(); technician = false; managing = false; arranging = false; grabbed = -1;
     }
     private void viewingMenu() {
         if (managing || viewingMenu != null || technicianConfirmation != null) return;
@@ -223,12 +244,12 @@ public final class MainActivity extends Activity {
     private void saveViewingSoon() {
         if (current == null || arranging || !storageOkay) return;
         current.lastPage = page;
-        if (focusedCamera >= 0 && focusedCamera < current.cameras.size()) current.lastCameraId = current.cameras.get(focusedCamera).id;
+        if (focusedCamera >= 0 && focusedCamera < current.visibleCameras().size()) current.lastCameraId = current.visibleCameras().get(focusedCamera).id;
         viewingSave.removeCallbacksAndMessages(null);
         viewingSave.postDelayed(() -> { if (started && !arranging) persist(); }, 800);
     }
     private void closePairing() {
-        if (phone != null) { phone.close(); phone = null; }
+        if (phone != null) { closeConnectionPreview(); phone.close(); phone = null; }
         if (pairingDialog != null) { AlertDialog d = pairingDialog; pairingDialog = null; d.dismiss(); }
     }
 
@@ -251,12 +272,12 @@ public final class MainActivity extends Activity {
         if (current != null) {
             int savedPage = state == null ? current.lastPage : state.getInt("page", current.lastPage);
             String savedCameraId = state == null ? current.lastCameraId : state.getString("camera", current.lastCameraId);
-            focusedCamera = TvViewingState.restoreCameraIndex(current.cameras, current.grid, savedPage, savedCameraId);
+            focusedCamera = TvViewingState.restoreCameraIndex(current.visibleCameras(), current.grid, savedPage, savedCameraId);
             page = focusedCamera / current.grid;
         }
         if (state != null) {
             fullSub = state.getBoolean("fullSub", false);
-            if (current != null && !current.cameras.isEmpty() && state.getInt("fullscreen", -1) >= 0)
+            if (current != null && !current.visibleCameras().isEmpty() && state.getInt("fullscreen", -1) >= 0)
                 fullscreen = focusedCamera;
         }
         if (state != null && state.containsKey("update.pending")) {
@@ -286,7 +307,7 @@ public final class MainActivity extends Activity {
         viewingSave.removeCallbacksAndMessages(null);
         if (storageOkay && current != null && !arranging) {
             current.lastPage = page;
-            if (focusedCamera >= 0 && focusedCamera < current.cameras.size()) current.lastCameraId = current.cameras.get(focusedCamera).id;
+            if (focusedCamera >= 0 && focusedCamera < current.visibleCameras().size()) current.lastCameraId = current.visibleCameras().get(focusedCamera).id;
             try { store.save(locations); } catch (Exception ignored) { }
         }
         started = false; if (activeToast != null) activeToast.cancel(); closePairing(); releaseStreams(); ui.removeCallbacksAndMessages(null); super.onStop();
@@ -311,8 +332,8 @@ public final class MainActivity extends Activity {
         super.onSaveInstanceState(out);
         if (updater != null) updater.saveState(out);
         out.putString("location", current == null ? "" : current.id);
-        out.putString("camera", current != null && focusedCamera >= 0 && focusedCamera < current.cameras.size()
-                ? current.cameras.get(focusedCamera).id : "");
+        out.putString("camera", current != null && focusedCamera >= 0 && focusedCamera < current.visibleCameras().size()
+                ? current.visibleCameras().get(focusedCamera).id : "");
         out.putInt("page", page); out.putInt("fullscreen", fullscreen); out.putBoolean("fullSub", fullSub);
     }
 
@@ -324,7 +345,7 @@ public final class MainActivity extends Activity {
     }
     private int dp(int n) { return Math.round(n * getResources().getDisplayMetrics().density); }
     private void releaseStreams() {
-        fullscreenToken++; ui.removeCallbacks(hideChrome); fullTile = null; fullHelp = null; viewingHelp = null;
+        fullscreenToken++; ui.removeCallbacks(hideChrome); fullTile = null; fullHelp = null; viewingHelp = null; viewingBar = null; layoutControl = null; locationControl = null;
         for (StreamTile stream : streams) stream.release(); streams.clear();
     }
 
@@ -380,92 +401,139 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private ArrayList<Camera> gridCameras() {
+        return current == null ? new ArrayList<>() : arranging ? current.cameras : current.visibleCameras();
+    }
+    private int gridSize() { return arranging ? 6 : current == null ? 4 : current.grid; }
+    private String[] layoutNames() {
+        int[] sizes=GridLayoutSpec.sizes(); String[] names=new String[sizes.length];
+        for(int i=0;i<sizes.length;i++) names[i]=sizes[i]==6?getString(R.string.tv_layout_six):getString(R.string.tv_layout_option,sizes[i]);
+        return names;
+    }
+    private void applyLayout(int size) {
+        if(current==null||arranging) return;
+        boolean keepControlFocus=layoutControl!=null&&layoutControl.hasFocus();
+        current.grid=size; page=focusedCamera/size; if(!persist())return; render();
+        if(keepControlFocus&&layoutControl!=null)layoutControl.requestFocus();
+    }
+    private android.widget.ImageButton toolbarIcon(int drawable,String tag,String label,Runnable click) {
+        android.widget.ImageButton b=new android.widget.ImageButton(this); b.setId(View.generateViewId()); b.setTag(tag);
+        b.setImageResource(drawable); b.setContentDescription(label); b.setTooltipText(label);
+        b.setPadding(dp(12),dp(12),dp(12),dp(12)); focusStyle(b); b.setOnClickListener(v->click.run());
+        b.setOnFocusChangeListener((v,has)->{v.setBackground(box(has?0xFF24453F:PANEL,has?MINT:0));revealChrome();});
+        return b;
+    }
+    private void addViewingBar(FrameLayout stage) {
+        LinearLayout bar=row(); bar.setTag("viewing-toolbar"); bar.setPadding(dp(8),dp(4),dp(8),dp(4)); bar.setBackgroundColor(0xDA101825);
+        layoutControl=toolbarIcon(R.drawable.ic_grid_layout,"layout-control",getString(R.string.tv_layout_control,current==null?4:current.grid),()->{
+            if(current==null)return; int[] sizes=GridLayoutSpec.sizes(); int at=0;
+            for(int i=0;i<sizes.length;i++)if(sizes[i]==current.grid)at=i;
+            applyLayout(sizes[(at+1)%sizes.length]);
+        });
+        layoutControl.setOnLongClickListener(v->{layoutPicker();return true;});
+        bar.addView(layoutControl,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        TextView name=text(current==null?getString(R.string.app_name):getString(R.string.tv_page_label,current.name,page+1,CameraRules.pageCount(gridCameras().size(),gridSize())),18,TEXT);
+        name.setTag("location-title"); name.setGravity(Gravity.CENTER);name.setSingleLine(true);name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        viewingHelp=name; bar.addView(name,new LinearLayout.LayoutParams(0,dp(48),1));
+        locationControl=toolbarIcon(R.drawable.ic_location_switch,"location-control",getString(R.string.tv_location_control),this::locationPicker);
+        bar.addView(locationControl,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        viewingBar=bar; stage.addView(bar,new FrameLayout.LayoutParams(-1,dp(56),Gravity.TOP));
+    }
     private void render() {
-        if (!storageOkay || recorderEditor != null) return;
-        if (managing && technician) { renderManager(); return; }
-        if (fullscreen >= 0 && current != null && fullscreen < current.cameras.size()) { renderFullscreen(); return; }
-        fullscreen = -1; base(); root.setPadding(0, 0, 0, 0);
-        FrameLayout stage = new FrameLayout(this); stage.setTag("viewing-stage");
-        root.addView(stage, new LinearLayout.LayoutParams(-1, -1));
-        if (current == null || current.cameras.isEmpty()) {
-            TextView welcome = text(getString(R.string.tv_no_cameras_yet_hold_menu_for_3_seconds_to_set_up), 24, TEXT);
-            welcome.setGravity(Gravity.CENTER); stage.addView(welcome, new FrameLayout.LayoutParams(-1, -1));
-            welcome.setFocusable(true); welcome.requestFocus(); return;
+        if(!storageOkay||recorderEditor!=null)return;
+        if(managing&&technician&&!arranging){renderManager();return;}
+        ArrayList<Camera> cameras=gridCameras();
+        if(fullscreen>=0&&!arranging&&!cameras.isEmpty()){fullscreen=Math.min(fullscreen,cameras.size()-1);renderFullscreen();return;}
+        fullscreen=-1; base(); root.setPadding(0,0,0,0);
+        if(arranging){
+            root.setPadding(dp(16),dp(8),dp(16),dp(8));
+            root.addView(text(getString(R.string.tv_manage_channels),22,TEXT));
+            root.addView(text(grabbed<0?getString(R.string.tv_channel_edit_hint):getString(R.string.tv_channel_source,cameras.get(grabbed).name),14,MINT));
+            LinearLayout actions=row();actions.setTag("channel-actions");
+            Button saveOrder=button(getString(R.string.tv_save_arrangement),()->finishArrangement(true));saveOrder.setTag("save-channels");addButton(actions,saveOrder);
+            addButton(actions,button(getString(R.string.tv_cancel_arrangement),()->finishArrangement(false)));
+            Button hide=button(getString(cameras.get(Math.max(0,Math.min(focusedCamera,cameras.size()-1))).hidden?R.string.tv_show_selected:R.string.tv_hide_selected),this::toggleSelectedHidden);hide.setTag("channel-hide");addButton(actions,hide);
+            addButton(actions,button("‹",()->changePage(-1)));addButton(actions,button("›",()->changePage(1)));root.addView(actions);
         }
-        page = CameraRules.clampPage(page, current.cameras.size(), current.grid);
-        int columns = (int) Math.sqrt(current.grid);
-        LinearLayout grid = new LinearLayout(this); grid.setTag("camera-grid"); grid.setOrientation(LinearLayout.VERTICAL);
-        stage.addView(grid, new FrameLayout.LayoutParams(-1, -1));
-        for (int r = 0; r < columns; r++) {
-            LinearLayout line = row(); grid.addView(line, new LinearLayout.LayoutParams(-1, 0, 1));
-            for (int col = 0; col < columns; col++) {
-                int absolute = page * current.grid + r * columns + col;
-                FrameLayout tile = new FrameLayout(this);
-                line.addView(tile, new LinearLayout.LayoutParams(0, -1, 1));
-                if (absolute >= current.cameras.size()) { tile.setBackgroundColor(android.graphics.Color.BLACK); continue; }
-                Camera c = current.cameras.get(absolute);
-                tile.setId(View.generateViewId()); tile.setFocusable(true); tile.setFocusableInTouchMode(true); tile.setClickable(true);
-                tile.setBackgroundColor(android.graphics.Color.BLACK);
-                if (arranging) {
-                    TextView label = text((absolute + 1) + "\n" + c.name, 19, TEXT);
-                    label.setGravity(Gravity.CENTER); tile.addView(label, new FrameLayout.LayoutParams(-1, -1));
-                } else if (started) {
-                    StreamTile stream = new StreamTile(this, c, false, current.tcp);
-                    tile.addView(stream, new FrameLayout.LayoutParams(-1, -1)); streams.add(stream); stream.start(tileViews.size() * 120L);
-                }
-                tile.setOnFocusChangeListener((v, has) -> { if (has) { focusedCamera = absolute; saveViewingSoon(); } setViewingChrome(chromeVisible); });
-                tile.setContentDescription(c.name + getString(R.string.tv_camera_action));
-                tile.setOnClickListener(v -> { focusedCamera = absolute; fullscreen = absolute; fullSub = false; render(); });
-                tile.setOnLongClickListener(v -> true);
-                tileViews.add(tile);
+        FrameLayout stage=new FrameLayout(this);stage.setTag("viewing-stage");
+        root.addView(stage,new LinearLayout.LayoutParams(-1,0,1));
+        if(cameras.isEmpty()){
+            TextView welcome=text(current!=null&&!current.cameras.isEmpty()?getString(R.string.tv_all_channels_hidden):getString(R.string.tv_no_cameras_yet_hold_menu_for_3_seconds_to_set_up),22,TEXT);
+            welcome.setGravity(Gravity.CENTER);stage.addView(welcome,new FrameLayout.LayoutParams(-1,-1));welcome.setFocusable(true);welcome.requestFocus();
+            if(!arranging)addViewingBar(stage);revealChrome();return;
+        }
+        int size=gridSize();page=CameraRules.clampPage(page,cameras.size(),size);focusedCamera=Math.max(page*size,Math.min(focusedCamera,Math.min(cameras.size()-1,(page+1)*size-1)));
+        CameraGridView grid=new CameraGridView(this,size);grid.setTag("camera-grid");stage.addView(grid,new FrameLayout.LayoutParams(-1,-1));
+        for(int slot=0;slot<size;slot++){
+            final int absolute=page*size+slot;FrameLayout tile=new FrameLayout(this);grid.addView(tile);
+            tile.setBackgroundColor(android.graphics.Color.BLACK);if(absolute>=cameras.size())continue;
+            Camera c=cameras.get(absolute);tile.setId(View.generateViewId());tile.setFocusable(true);tile.setFocusableInTouchMode(true);tile.setClickable(true);
+            tile.setOnTouchListener((v,event)->{if(event.getAction()==android.view.MotionEvent.ACTION_DOWN)v.requestFocus();return false;});
+            if(started){StreamTile stream=new StreamTile(this,c,false,current.tcp);tile.addView(stream,new FrameLayout.LayoutParams(-1,-1));streams.add(stream);stream.start(slot*120L);}
+            if(arranging){
+                TextView state=text((absolute+1)+" • "+c.name+(c.hidden?" • "+getString(R.string.tv_hidden_channel):""),14,c.hidden?0xFFFFCC86:MINT);
+                state.setBackgroundColor(0xDA101825);state.setTag("channel-state:"+c.id);tile.addView(state,new FrameLayout.LayoutParams(-1,-2,Gravity.TOP));
+                tile.setAlpha(c.hidden?.65f:1f);
             }
+            tile.setOnFocusChangeListener((v,has)->{if(has){focusedCamera=absolute;if(!arranging)saveViewingSoon();else{Button hide=root.findViewWithTag("channel-hide");if(hide!=null)hide.setText(c.hidden?R.string.tv_show_selected:R.string.tv_hide_selected);}}setViewingChrome(chromeVisible);});
+            tile.setContentDescription(c.name+getString(R.string.tv_camera_action)+(arranging&&c.hidden?" • "+getString(R.string.tv_hidden_channel):""));
+            tile.setOnClickListener(v->{focusedCamera=absolute;if(arranging){if(grabbed<0)grabbed=absolute;else{CameraRules.swap(current.cameras,grabbed,absolute);grabbed=-1;}render();}else{fullscreen=absolute;fullSub=true;render();}});
+            tile.setOnLongClickListener(v->{if(arranging){focusedCamera=absolute;toggleSelectedHidden();}return true;});tileViews.add(tile);
         }
-        TextView help = text(current.name + "  •  " + (page + 1) + "/" + CameraRules.pageCount(current.cameras.size(), current.grid)
-                + getString(R.string.tv_grid_help), 14, TEXT);
-        help.setBackgroundColor(0xB8101825); viewingHelp = help;
-        stage.addView(help, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END));
-        int focus = Math.max(0, Math.min(tileViews.size() - 1, focusedCamera - page * current.grid));
-        if (!tileViews.isEmpty()) tileViews.get(focus).requestFocus(); revealChrome();
+        if(!arranging)addViewingBar(stage);
+        if(!tileViews.isEmpty())tileViews.get(focusedCamera-page*size).requestFocus();revealChrome();
     }
-
-    private void changePage(int direction) {
-        if (grabbed >= 0) { toast(getString(R.string.tv_drop_the_camera_with_ok_first)); return; }
-        page = Math.floorMod(page + direction, CameraRules.pageCount(current.cameras.size(), current.grid));
-        focusedCamera = page * current.grid; saveViewingSoon(); render();
+    private void toggleSelectedHidden(){
+        if(!arranging||current==null||focusedCamera<0||focusedCamera>=current.cameras.size())return;
+        Camera c=current.cameras.get(focusedCamera);c.hidden=!c.hidden;render();
     }
+    private void restoreArrangement(){
+        if(!arranging||current==null)return;
+        current.cameras.clear();current.cameras.addAll(originalOrder);
+        for(Camera c:current.cameras)if(originalHidden.containsKey(c.id))c.hidden=originalHidden.get(c.id);
+    }
+    private void finishArrangement(boolean save){
+        if(!arranging)return;if(!save)restoreArrangement();arranging=false;grabbed=-1;managing=true;
+        focusedCamera=TvViewingState.restoreCameraIndex(current.visibleCameras(),current.grid,current.lastPage,current.lastCameraId);page=focusedCamera/current.grid;
+        if(!save||persist())render();
+    }
+    private void changePage(int direction){
+        if(grabbed>=0&&!arranging){toast(getString(R.string.tv_drop_the_camera_with_ok_first));return;}
+        int size=gridSize();page=Math.floorMod(page+direction,CameraRules.pageCount(gridCameras().size(),size));focusedCamera=page*size;saveViewingSoon();render();
+    }
+    private void renderFullscreen(){
+        base();root.setPadding(0,0,0,0);Camera camera=current.visibleCameras().get(fullscreen);fullSub=true;focusedCamera=fullscreen;saveViewingSoon();
+        FrameLayout frame=new FrameLayout(this);root.addView(frame,new LinearLayout.LayoutParams(-1,-1));
+        if(started){StreamTile tile=new StreamTile(this,camera,false,current.tcp);fullTile=tile;streams.add(tile);frame.addView(tile,new FrameLayout.LayoutParams(-1,-1));tile.start(150);}
+        fullHelp=text(getString(R.string.tv_fullscreen_sub_help),13,TEXT);fullHelp.setBackgroundColor(0xB8101825);frame.addView(fullHelp,new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.START));
+        frame.setFocusable(true);frame.setFocusableInTouchMode(true);frame.requestFocus();addViewingBar(frame);revealChrome();
+    }
+    private boolean fullSub=true;
+    private void toggleFullscreenStream(){revealChrome();if(layoutControl!=null)layoutControl.requestFocus();}
 
-    private void renderFullscreen() {
-        base(); root.setPadding(0, 0, 0, 0);
-        Camera camera = current.cameras.get(fullscreen);
-        final int token = fullscreenToken;
-        focusedCamera = fullscreen; saveViewingSoon();
-        FrameLayout frame = new FrameLayout(this); root.addView(frame, new LinearLayout.LayoutParams(-1, -1));
-        if (started) {
-            StreamTile tile = new StreamTile(this, camera, !fullSub, current.tcp);
-            fullTile = tile;
-            if (!fullSub) tile.setListener(new StreamTile.Listener() {
-                @Override public void onFirstFrame() { }
-                @Override public void onFailure(PlaybackFailure reason) {
-                    ui.post(() -> {
-                        if (started && token == fullscreenToken && fullscreen >= 0 && !fullSub) {
-                            fullSub = true; render(); toast(getString(R.string.tv_mainstream_unavailable_switched_to_substream));
-                        }
-                    });
-                }
-            });
-            streams.add(tile); frame.addView(tile, new FrameLayout.LayoutParams(-1, -1)); tile.start(150);
+    private void openHeldShortcut(TvViewingState.Key key){
+        if(!viewingInputFocused()||arranging)return;
+        if(remote.held(key,android.os.SystemClock.uptimeMillis())){if(key==TvViewingState.Key.LEFT)layoutPicker();else locationPicker();}
+    }
+    private boolean dispatchHorizontal(KeyEvent event){
+        boolean left=event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT;TvViewingState.Key key=left?TvViewingState.Key.LEFT:TvViewingState.Key.RIGHT;
+        Runnable hold=left?leftHold:rightHold;long now=android.os.SystemClock.uptimeMillis();
+        if(event.getAction()==KeyEvent.ACTION_DOWN){if(event.getRepeatCount()==0){remote.down(key,now);ui.postDelayed(hold,1000);}else openHeldShortcut(key);}
+        else if(event.getAction()==KeyEvent.ACTION_UP){ui.removeCallbacks(hold);if(event.isCanceled())remote.cancel(key);else openHeldShortcut(key);if(remote.up(key,now))moveViewing(left?-1:1,0);}
+        return true;
+    }
+    private void moveViewing(int dx,int dy){
+        if(viewingBar!=null&&viewingBar.hasFocus()){
+            if(dy>0){if(fullscreen>=0&&fullTile!=null){View parent=(View)fullTile.getParent();parent.requestFocus();}else if(!tileViews.isEmpty())tileViews.get(Math.max(0,Math.min(tileViews.size()-1,focusedCamera-page*gridSize()))).requestFocus();}
+            else if(dx!=0){if(dx<0)layoutControl.requestFocus();else locationControl.requestFocus();}return;
         }
-        TextView help = text(getString(R.string.tv_camera_ok_sub_main_back_grid), 13, TEXT);
-        fullHelp = help;
-        help.setBackgroundColor(0xB8101825);
-        FrameLayout.LayoutParams hint = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
-        hint.setMargins(dp(16), dp(16), dp(16), 0); frame.addView(help, hint);
-        frame.setFocusable(true); frame.setFocusableInTouchMode(true); frame.requestFocus(); revealChrome();
-    }
-
-    private boolean fullSub;
-    private void toggleFullscreenStream() {
-        fullSub = !fullSub; render();
+        if(current==null||gridCameras().isEmpty()){if(dy<0&&layoutControl!=null)layoutControl.requestFocus();return;}
+        if(fullscreen>=0){if(dx!=0){fullscreen=Math.floorMod(fullscreen+dx,gridCameras().size());focusedCamera=fullscreen;render();}else if(dy<0&&layoutControl!=null)layoutControl.requestFocus();return;}
+        int size=gridSize(),local=focusedCamera-page*size;
+        if(dy<0&&arranging&&GridLayoutSpec.cells(size).get(local).y==0){View save=root.findViewWithTag("save-channels");if(save!=null)save.requestFocus();return;}
+        if(dy<0&&!arranging&&GridLayoutSpec.cells(size).get(local).y==0&&layoutControl!=null){layoutControl.requestFocus();return;}
+        int target=TvViewingState.move(focusedCamera,gridCameras().size(),size,dx,dy);focusedCamera=target;
+        if(target/size!=page){page=target/size;render();}else if(!tileViews.isEmpty())tileViews.get(target-page*size).requestFocus();saveViewingSoon();
     }
 
     private static TvViewingState.KeyPhase keyPhase(KeyEvent event) {
@@ -510,7 +578,7 @@ public final class MainActivity extends Activity {
             else if (remote.held(TvViewingState.Key.OK, now)) viewingMenu();
             if (remote.up(TvViewingState.Key.OK, now)) {
                 if (fullscreen >= 0) toggleFullscreenStream();
-                else if (current != null && !current.cameras.isEmpty()) { fullscreen = focusedCamera; fullSub = false; render(); }
+                else if (current != null && !current.visibleCameras().isEmpty()) { fullscreen = focusedCamera; fullSub = true; render(); }
             }
         }
         return true;
@@ -522,7 +590,7 @@ public final class MainActivity extends Activity {
         }
         TvViewingState.Key pending = key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER
                 ? TvViewingState.Key.OK : key == KeyEvent.KEYCODE_BACK ? TvViewingState.Key.VIEWING_BACK
-                : key == KeyEvent.KEYCODE_MENU ? TvViewingState.Key.MENU : null;
+                : key == KeyEvent.KEYCODE_MENU ? TvViewingState.Key.MENU : key == KeyEvent.KEYCODE_DPAD_LEFT ? TvViewingState.Key.LEFT : key == KeyEvent.KEYCODE_DPAD_RIGHT ? TvViewingState.Key.RIGHT : null;
         if (pending != null && remote.suppressPending(pending, keyPhase(event))) return true;
         return key == KeyEvent.KEYCODE_MENU;
     }
@@ -537,75 +605,43 @@ public final class MainActivity extends Activity {
                 || key == KeyEvent.KEYCODE_DPAD_UP || key == KeyEvent.KEYCODE_DPAD_DOWN
                 || key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER || key == KeyEvent.KEYCODE_MENU)) revealChrome();
         if (key == KeyEvent.KEYCODE_MENU) return dispatchMenuKey(event);
-        if (!managing && (key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER)) return dispatchViewingOk(event);
-        if (!managing && fullscreen < 0 && current != null && !current.cameras.isEmpty()) {
-            int dx = key == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : key == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : 0;
-            int dy = key == KeyEvent.KEYCODE_DPAD_UP ? -1 : key == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : 0;
-            if (dx != 0 || dy != 0) {
-                if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                    int target = TvViewingState.move(focusedCamera, current.cameras.size(), current.grid, dx, dy);
-                    if (target / current.grid != page) { focusedCamera = target; page = target / current.grid; render(); }
-                    else tileViews.get(target - page * current.grid).requestFocus();
-                    saveViewingSoon();
-                }
-                return true;
-            }
+        if (!managing && !arranging && (key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER)) {
+            if(viewingBar!=null&&viewingBar.hasFocus())return super.dispatchKeyEvent(event);
+            return dispatchViewingOk(event);
         }
-        if (fullscreen >= 0 && !managing) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN) revealChrome();
-            int code = event.getKeyCode();
-            if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
-                    fullscreen = Math.floorMod(fullscreen + (code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1), current.cameras.size());
-                    focusedCamera = fullscreen; fullSub = false; render();
-                }
-                return true;
-            }
-        }
-        if (arranging && grabbed >= 0 && event.getAction() == KeyEvent.ACTION_DOWN) {
-            int columns = (int) Math.sqrt(current.grid);
-            int code = event.getKeyCode();
-            int delta = code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : code == KeyEvent.KEYCODE_DPAD_RIGHT ? 1
-                    : code == KeyEvent.KEYCODE_DPAD_UP ? -columns : code == KeyEvent.KEYCODE_DPAD_DOWN ? columns : 0;
-            if (delta != 0) {
-                int target = grabbed + delta;
-                if (target >= 0 && target < current.cameras.size()) {
-                    CameraRules.swap(current.cameras, grabbed, target); grabbed = target; focusedCamera = target;
-                    page = target / current.grid; render();
-                }
-                return true;
-            }
+        if(!managing&&!arranging&&(key==KeyEvent.KEYCODE_DPAD_LEFT||key==KeyEvent.KEYCODE_DPAD_RIGHT))return dispatchHorizontal(event);
+        if(arranging){View actions=root.findViewWithTag("channel-actions");if(actions!=null&&actions.hasFocus())return super.dispatchKeyEvent(event);}
+        if((!managing||arranging)&&(key==KeyEvent.KEYCODE_DPAD_UP||key==KeyEvent.KEYCODE_DPAD_DOWN||key==KeyEvent.KEYCODE_DPAD_LEFT||key==KeyEvent.KEYCODE_DPAD_RIGHT)){
+            if(event.getAction()==KeyEvent.ACTION_DOWN)moveViewing(key==KeyEvent.KEYCODE_DPAD_LEFT?-1:key==KeyEvent.KEYCODE_DPAD_RIGHT?1:0,key==KeyEvent.KEYCODE_DPAD_UP?-1:key==KeyEvent.KEYCODE_DPAD_DOWN?1:0);
+            return true;
         }
         return super.dispatchKeyEvent(event);
     }
 
-    @Override public void onBackPressed() {
-        if (connectionPreview != null) { closeConnectionPreview(); return; }
-        if (recorderEditor != null) { askLeaveRecorder(); return; }
-        if (fullscreen >= 0) {
-            focusedCamera = fullscreen; page = fullscreen / current.grid; fullscreen = -1; fullSub = false; render();
-        } else if (arranging) {
-            current.cameras.clear(); current.cameras.addAll(originalOrder); arranging = false; grabbed = -1; render();
-        } else if (managing) { endTechnician(); render(); }
-        else dialogBuilder().setTitle(getString(R.string.tv_exit_cctv))
-                .setNegativeButton(getString(R.string.tv_keep_watching), null).setPositiveButton(getString(R.string.tv_exit), (d, w) -> finish()).show();
+    @Override public void onBackPressed(){
+        if(connectionPreview!=null){closeConnectionPreview();return;}
+        if(recorderEditor!=null){askLeaveRecorder();return;}
+        if(arranging){finishArrangement(false);return;}
+        if(managing){endTechnician();render();return;}
+        if(fullscreen>=0){focusedCamera=fullscreen;page=fullscreen/current.grid;fullscreen=-1;fullSub=true;render();return;}
+        if(viewingBar!=null&&viewingBar.hasFocus()&&!tileViews.isEmpty())tileViews.get(Math.max(0,Math.min(tileViews.size()-1,focusedCamera-page*gridSize()))).requestFocus();
+        revealChrome();
+    }
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event){if(!managing&&started)revealChrome();return super.dispatchTouchEvent(event);}
+    @Override public boolean onGenericMotionEvent(android.view.MotionEvent event){if(!managing&&started)revealChrome();return super.onGenericMotionEvent(event);}
+    private void toggleArrange(){
+        if(!technician||current==null||current.cameras.isEmpty())return;
+        if(arranging){finishArrangement(true);return;}
+        arranging=true;grabbed=-1;originalOrder=new ArrayList<>(current.cameras);originalHidden=new java.util.HashMap<>();
+        for(Camera c:current.cameras)originalHidden.put(c.id,c.hidden);
+        focusedCamera=0;page=0;render();
     }
 
-    private void toggleArrange() {
-        if (current == null || current.cameras.isEmpty()) return;
-        if (arranging) { arranging = false; grabbed = -1; persist(); }
-        else { arranging = true; grabbed = -1; originalOrder = new ArrayList<>(current.cameras); }
-        render();
+    private void layoutPicker(){
+        if(current==null||arranging)return;cancelRemoteHolds();int[] sizes=GridLayoutSpec.sizes();
+        dialogBuilder().setTitle(getString(R.string.tv_grid_size)).setItems(layoutNames(),(d,w)->applyLayout(sizes[w])).show();
     }
-    private void layoutPicker() {
-        if (current == null) return;
-        if (arranging) { toast(getString(R.string.tv_save_or_cancel_arrangement_first)); return; }
-        int[] sizes = {1, 4, 9, 16};
-        dialogBuilder().setTitle(getString(R.string.tv_live_grid_fewer_tiles_uses_less_power))
-                .setItems(new String[]{getString(R.string.tv_1_camera), getString(R.string.tv_4_cameras), getString(R.string.tv_9_cameras), getString(R.string.tv_16_cameras)}, (d, w) -> {
-                    current.grid = sizes[w]; page = focusedCamera / current.grid; persist(); render();
-                }).show();
-    }
+
     private void locationPicker() {
         if (arranging) { toast(getString(R.string.tv_save_or_cancel_arrangement_first)); return; }
         String[] names = new String[locations.size() + (technician ? 1 : 0)];
@@ -614,7 +650,7 @@ public final class MainActivity extends Activity {
         dialogBuilder().setTitle(getString(R.string.tv_locations)).setItems(names, (d, which) -> {
             if (technician && which == locations.size()) editLocation(null);
             else { current = locations.get(which);
-                focusedCamera = TvViewingState.restoreCameraIndex(current.cameras, current.grid, current.lastPage, current.lastCameraId);
+                focusedCamera = TvViewingState.restoreCameraIndex(current.visibleCameras(), current.grid, current.lastPage, current.lastCameraId);
                 page = focusedCamera / current.grid;
                 fullscreen = -1; rememberLocation(); render(); }
         }).show();
@@ -646,63 +682,43 @@ public final class MainActivity extends Activity {
         dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
         return dialog;
     }
-    private void editLocation(Location location) {
-        LinearLayout fields = form();
-        EditText name = field(fields, getString(R.string.tv_location_name), location == null ? "" : location.name, InputType.TYPE_CLASS_TEXT);
-        dialog(location == null ? getString(R.string.tv_add_location_label) : getString(R.string.tv_rename_location), fields, getString(R.string.tv_save), () -> {
-            if (value(name).isEmpty()) throw new IllegalArgumentException(getString(R.string.tv_enter_a_location_name));
-            if (location == null) { current = new Location(value(name)); locations.add(current); page = 0; focusedCamera = 0; }
-            else location.name = value(name);
-            if (persist()) { managing = true; render(); }
-        });
+    private void restoreStagedLocation(){
+        if(current!=null&&!locations.contains(current))current=previousRecorderLocation!=null?previousRecorderLocation:locations.isEmpty()?null:locations.get(0);
+        previousRecorderLocation=null;
     }
-
-    private void renderManager() {
-        base();
-        if (!technician) { managing = false; render(); return; }
-        LinearLayout header = row();
-        header.addView(text(current == null ? getString(R.string.tv_setup) : current.name + getString(R.string.tv_setup_suffix), 23, TEXT), new LinearLayout.LayoutParams(0, -2, 1));
-        addButton(header, button(getString(R.string.tv_live), () -> { endTechnician(); render(); })); root.addView(header);
-        LinearLayout tools = row();
-        Button primary = button(current == null ? getString(R.string.tv_add_location) : current.devices.isEmpty() ? getString(R.string.tv_add_recorder) : getString(R.string.tv_edit_recorder), () -> {
-            if (current == null) editLocation(null);
-            else if (current.devices.isEmpty()) addCameras();
-            else editNvr(current.devices.get(0), current.devices.get(0).preset);
-        }); addButton(tools, primary);
-        addButton(tools, button(getString(R.string.tv_location), () -> dialogBuilder().setTitle(getString(R.string.tv_locations)).setItems(new String[]{getString(R.string.tv_switch_location), getString(R.string.tv_add_location), getString(R.string.tv_location_settings)}, (d, w) -> {
-            if (w == 0) locationPicker(); if (w == 1) editLocation(null); if (w == 2 && current != null) locationOptions();
+    private void editLocation(Location location){
+        if(!technician)return;
+        if(location!=null){if(!location.devices.isEmpty())editNvr(location.devices.get(0),location.devices.get(0).preset);else addCameras();return;}
+        dialogBuilder().setTitle(getString(R.string.tv_add_nvr_location)).setItems(new String[]{"Hikvision NVR","VIGI NVR"},(d,w)->{
+            previousRecorderLocation=current;current=new Location("");page=0;focusedCamera=0;editNvr(null,w==0?CameraRules.Preset.HIKVISION:CameraRules.Preset.VIGI_NVR);
+        }).show();
+    }
+    private void renderManager(){
+        base();if(!technician){managing=false;render();return;}
+        LinearLayout header=row();header.addView(text(current==null?getString(R.string.tv_setup):current.name+getString(R.string.tv_setup_suffix),23,TEXT),new LinearLayout.LayoutParams(0,-2,1));
+        addButton(header,button(getString(R.string.tv_live),()->{endTechnician();render();}));root.addView(header);
+        LinearLayout tools=row();
+        Button primary=button(current==null?getString(R.string.tv_add_location):current.devices.isEmpty()?getString(R.string.tv_add_recorder):getString(R.string.tv_edit_recorder),()->{
+            if(current==null)editLocation(null);else if(current.devices.isEmpty())addCameras();else editNvr(current.devices.get(0),current.devices.get(0).preset);
+        });primary.setTag("nvr-primary");addButton(tools,primary);
+        addButton(tools,button(getString(R.string.tv_location),()->dialogBuilder().setTitle(getString(R.string.tv_locations)).setItems(new String[]{getString(R.string.tv_switch_location),getString(R.string.tv_add_location),getString(R.string.tv_location_settings)},(d,w)->{
+            if(w==0)locationPicker();if(w==1)editLocation(null);if(w==2&&current!=null)locationOptions();
         }).show()));
-        if (current != null) {
-            addButton(tools, button(getString(R.string.tv_advanced), () -> dialogBuilder().setTitle(getString(R.string.tv_advanced_setup))
-                .setItems(new String[]{getString(R.string.tv_recorders), getString(R.string.tv_add_nvr_camera), getString(R.string.tv_set_up_from_phone)}, (d, w) -> {
-                    if (w == 0) recorderPicker(); if (w == 1) addCameras(); if (w == 2) startPhoneSetup();
-                }).show()));
+        if(current!=null){
+            if(pendingRecorderDraft!=null)addButton(tools,button(getString(R.string.tv_resume_draft),this::restoreRecorderEditor));
+            Button channels=button(getString(R.string.tv_manage_channels),this::toggleArrange);channels.setTag("manage-channels");channels.setEnabled(!current.cameras.isEmpty());addButton(tools,channels);
+            addButton(tools,button(getString(R.string.tv_advanced),()->dialogBuilder().setTitle(getString(R.string.tv_advanced_setup)).setItems(new String[]{getString(R.string.tv_set_up_from_phone)},(d,w)->startPhoneSetup()).show()));
         }
-        addButton(tools, button(getString(R.string.tv_check_for_updates), this::showUpdates)); root.addView(tools);
-        if (current == null) { primary.requestFocus(); return; }
-        root.addView(text(getString(R.string.tv_transport) + (current.tcp ? "TCP" : "UDP / TCP"), 13, MINT));
-        if (!current.devices.isEmpty()) {
-            Nvr recorder = current.devices.get(0);
-            root.addView(text(getString(R.string.tv_primary_recorder, recorder.name, recorder.count), 18, TEXT));
+        addButton(tools,button(getString(R.string.tv_check_for_updates),this::showUpdates));root.addView(tools);
+        root.addView(text(getString(R.string.tv_substream_only),15,MINT));
+        if(current!=null){
+            if(!current.devices.isEmpty()){Nvr n=current.devices.get(0);root.addView(text(getString(R.string.tv_primary_recorder,n.name,n.count),20,TEXT));}
+            root.addView(text(getString(R.string.tv_default_grid)+": "+current.defaultGrid,17,TEXT));
+            root.addView(text(getString(R.string.tv_transport)+(current.tcp?"TCP":"UDP / TCP"),14,TEXT));
         }
-        LinearLayout list = form();
-        if (current.cameras.isEmpty()) list.addView(text(getString(R.string.tv_add_an_nvr_to_create_channels_together_or_add_a_custom_rtsp_camera), 18, TEXT));
-        for (int i = 0; i < current.cameras.size(); i++) {
-            int index = i; Camera c = current.cameras.get(i);
-            LinearLayout line = row();
-            TextView title = text((i + 1) + ". " + c.name, 17, TEXT); title.setMaxLines(1); title.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            line.addView(title, new LinearLayout.LayoutParams(0, dp(54), 1));
-            Button up = button("↑", () -> { CameraRules.move(current.cameras, index, index - 1); persist(); renderManager(); focusManagerCamera(index - 1); });
-            up.setContentDescription(getString(R.string.tv_move_camera_up, c.name)); up.setEnabled(i > 0); up.setAlpha(i > 0 ? 1f : .35f); addButton(line, up);
-            Button down = button("↓", () -> { CameraRules.move(current.cameras, index, index + 1); persist(); renderManager(); focusManagerCamera(index + 1); });
-            down.setContentDescription(getString(R.string.tv_move_camera_down, c.name)); down.setEnabled(i < current.cameras.size() - 1); down.setAlpha(i < current.cameras.size() - 1 ? 1f : .35f); addButton(line, down);
-            Button edit = button(getString(R.string.tv_edit), () -> editCamera(c)); edit.setContentDescription(getString(R.string.tv_edit_label) + c.name); addButton(line, edit);
-            addButton(line, button(getString(R.string.tv_more), () -> cameraOptions(index)));
-            list.addView(line); tileViews.add(edit);
-        }
-        root.addView(scroll(list), new LinearLayout.LayoutParams(-1, 0, 1));
         primary.requestFocus();
     }
+
     private void focusManagerCamera(int index) {
         focusedCamera = Math.max(0, Math.min(index, tileViews.size() - 1));
         if (!tileViews.isEmpty()) tileViews.get(focusedCamera).requestFocus();
@@ -746,83 +762,23 @@ public final class MainActivity extends Activity {
                             }).show();
                 }).show();
     }
-    private void cameraOptions(int index) {
-        if (!technician) return;
-        Camera c = current.cameras.get(index);
-        dialogBuilder().setTitle(c.name)
-                .setItems(new String[]{getString(R.string.tv_edit_name_rtsp_urls), getString(R.string.tv_move_to_position), getString(R.string.tv_delete_camera)}, (d, w) -> {
-                    if (w == 0) editCamera(c);
-                    if (w == 1) {
-                        LinearLayout f = form(); EditText position = field(f, getString(R.string.tv_position_1) + current.cameras.size() + ")", "" + (index + 1), InputType.TYPE_CLASS_NUMBER);
-                        dialog(getString(R.string.tv_move) + c.name, f, getString(R.string.tv_move_label), () -> {
-                            int to = number(position, getString(R.string.tv_position), 1, current.cameras.size()) - 1;
-                            focusedCamera = CameraRules.move(current.cameras, index, to); page = focusedCamera / current.grid;
-                            persist(); render();
-                        });
-                    }
-                    if (w == 2) safeDeleteDialog(getString(R.string.tv_delete) + c.name + "?")
-                            .setNegativeButton(getString(R.string.tv_cancel), null).setPositiveButton(getString(R.string.tv_delete_label), (x, y) -> {
-                                current.cameras.remove(c); focusedCamera = Math.max(0, index - 1); persist(); render();
-                            }).show();
-                }).show();
-    }
 
     private Spinner spinner(LinearLayout fields, String label, String[] entries) {
         fields.addView(text(label, 13, 0xFFACBBD0)); Spinner s = new Spinner(this);
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, entries);
         s.setAdapter(adapter); s.setMinimumHeight(dp(48)); s.setContentDescription(label); fields.addView(s); return s;
     }
-    private void addCameras() {
-        dialogBuilder().setTitle(getString(R.string.tv_add_cameras))
-                .setItems(new String[]{"Hikvision NVR", "VIGI NVR", getString(R.string.tv_vigi_standalone_camera), getString(R.string.tv_custom_rtsp_camera)}, (d, w) -> {
-                    if (w == 3) editCamera(null); else editNvr(null, CameraRules.Preset.values()[w]);
-                }).show();
+    private void addCameras(){
+        if(!technician||current==null)return;
+        if(!current.devices.isEmpty()){editNvr(current.devices.get(0),current.devices.get(0).preset);return;}
+        dialogBuilder().setTitle(getString(R.string.tv_add_recorder)).setItems(new String[]{"Hikvision NVR","VIGI NVR"},(d,w)->editNvr(null,w==0?CameraRules.Preset.HIKVISION:CameraRules.Preset.VIGI_NVR)).show();
     }
+
     private int number(EditText field, String label, int min, int max) {
         try {
             int n = Integer.parseInt(value(field)); if (n >= min && n <= max) return n;
         } catch (NumberFormatException ignored) { }
         throw new IllegalArgumentException(getString(R.string.tv_number_range, label, min, max));
-    }
-    private void editCamera(Camera camera) {
-        LinearLayout f = form();
-        EditText name = field(f, getString(R.string.tv_camera_name), camera == null ? getString(R.string.tv_camera) + (current.cameras.size() + 1) : camera.name, InputType.TYPE_CLASS_TEXT);
-        // URLs may contain credentials; password variation hides them on a shared TV screen.
-        int urlType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD;
-        EditText sub = field(f, getString(R.string.tv_substream_rtsp_url_grid), camera == null ? "" : camera.subUrl, urlType);
-        EditText main = field(f, getString(R.string.tv_mainstream_rtsp_url_fullscreen), camera == null ? "" : camera.mainUrl, urlType);
-        addButton(f, button(getString(R.string.tv_test_substream_on_tv), () -> {
-            try {
-                CameraRules.validateUrl(value(sub)); CameraRules.validateUrl(value(main));
-                showConnectionTest(new Camera(value(name), value(sub), value(main)), null);
-            } catch (IllegalArgumentException e) { toast(validationMessage(e)); }
-        }));
-        addButton(f, button(getString(R.string.tv_show_hide_urls), () -> {
-            boolean hidden = sub.getTransformationMethod() != null;
-            sub.setTransformationMethod(hidden ? null : android.text.method.PasswordTransformationMethod.getInstance());
-            main.setTransformationMethod(hidden ? null : android.text.method.PasswordTransformationMethod.getInstance());
-        }));
-        dialog(camera == null ? getString(R.string.tv_add_custom_camera) : getString(R.string.tv_edit_camera), f, getString(R.string.tv_save), () -> {
-            if (value(name).isEmpty()) throw new IllegalArgumentException(getString(R.string.tv_enter_a_camera_name));
-            CameraRules.validateUrl(value(sub)); CameraRules.validateUrl(value(main));
-            if (camera == null) {
-                if (current.cameras.size() >= 256) throw new IllegalArgumentException(getString(R.string.tv_maximum_256_cameras_per_location));
-                current.cameras.add(new Camera(value(name), value(sub), value(main)));
-            } else {
-                if (!camera.subUrl.equals(value(sub)) || !camera.mainUrl.equals(value(main))) camera.deviceId = "";
-                camera.name = value(name); camera.subUrl = value(sub); camera.mainUrl = value(main);
-            }
-            if (persist()) render();
-        });
-    }
-    private void recorderPicker() {
-        String[] names = new String[current.devices.size() + 1];
-        for (int i = 0; i < current.devices.size(); i++) names[i] = current.devices.get(i).name;
-        names[names.length - 1] = getString(R.string.tv_add_recorder_label);
-        dialogBuilder().setTitle(getString(R.string.tv_shared_recorder_settings)).setItems(names, (d, which) -> {
-            if (which == current.devices.size()) addCameras();
-            else editNvr(current.devices.get(which), current.devices.get(which).preset);
-        }).show();
     }
 
     // Keep raw edits (including pasted nonnumeric text) while offering a numeric keyboard.
@@ -835,17 +791,21 @@ public final class MainActivity extends Activity {
 
     private void editNvr(Nvr existing, CameraRules.Preset preset) {
         if (!technician || recorderEditor != null || current == null) return;
+        if(existing==null&&!current.devices.isEmpty()){toast(getString(R.string.tv_nvr_required));return;}
         Nvr initial = existing == null ? new Nvr() : existing;
         if (existing == null) { initial.preset = preset; initial.name = preset.name().replace('_', ' '); initial.prefix = getString(R.string.tv_camera_label); }
         RecorderDraft draft = new RecorderDraft();
         draft.locationId = current.id; draft.recorderId = existing == null ? "" : existing.id;
         draft.preset = preset.name(); draft.name = initial.name; draft.host = initial.host;
         draft.port = "" + initial.port; draft.username = initial.username; draft.first = "" + initial.first;
-        draft.count = "" + initial.count; draft.prefix = initial.prefix;
+        draft.count = "" + initial.count; draft.prefix = initial.prefix; draft.locationName=current.name;draft.defaultGrid=current.defaultGrid;
         String saved = draftPreferences().getString(draft.key(), null);
         if (saved != null) try { draft = RecorderDraft.decode(saved); } catch (org.json.JSONException ignored) { }
         recorderDraft = draft;
         LinearLayout f = form();
+        recorderLocationName=field(f,getString(R.string.tv_location_name),draft.locationName.isEmpty()?current.name:draft.locationName,InputType.TYPE_CLASS_TEXT);
+        recorderDefaultGrid=spinner(f,getString(R.string.tv_default_grid),layoutNames());
+        int[] available=GridLayoutSpec.sizes();for(int i=0;i<available.length;i++)if(available[i]==draft.defaultGrid)recorderDefaultGrid.setSelection(i);
         f.addView(text(getString(R.string.tv_scrolls_through_fields_back_keep_draft_discard_password_must_be_re_entered_after_leaving_the_app), 13, MINT));
         EditText name = field(f, getString(R.string.tv_recorder_name), draft.name, InputType.TYPE_CLASS_TEXT);
         EditText host = field(f, getString(R.string.tv_ip_address_or_hostname), draft.host, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
@@ -881,6 +841,7 @@ public final class MainActivity extends Activity {
                     while (target >= 0 && target < recorderFields.length && !recorderFields[target].isEnabled()) target += code == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1;
                     if (target >= recorderFields.length) testButton.requestFocus();
                     else if (target >= 0) recorderFields[target].requestFocus();
+                    else recorderDefaultGrid.requestFocus();
                     return true;
                 });
             }
@@ -888,6 +849,9 @@ public final class MainActivity extends Activity {
             testButton.setOnClickListener(v -> {
                 try {
                     captureRecorderDraft();
+                    String locationName=value(recorderLocationName);
+                    if(locationName.isEmpty())throw new IllegalArgumentException(getString(R.string.tv_empty_location_name));
+                    final int selectedDefault=GridLayoutSpec.sizes()[recorderDefaultGrid.getSelectedItemPosition()];
                     Nvr candidate = new Nvr(); candidate.id = initial.id; candidate.preset = preset;
                     candidate.name = value(name); candidate.host = value(host); candidate.port = number(port, getString(R.string.tv_port), 1, 65535);
                     candidate.username = user.getText().toString();
@@ -898,13 +862,16 @@ public final class MainActivity extends Activity {
                     showConnectionTest(new Camera(candidate.prefix + " " + candidate.first, candidate.url(candidate.first, false), candidate.url(candidate.first, true)), () -> {
                         try {
                             candidate.apply(current);
+                            current.name=locationName;current.defaultGrid=selectedDefault;
+                            current.grid=selectedDefault;
+                            if(!locations.contains(current))locations.add(current);
                             if (persist()) { managing = true; finishRecorderEditor(true); }
                         } catch (IllegalArgumentException e) { toast(validationMessage(e)); }
                     });
                 } catch (IllegalArgumentException e) { toast(validationMessage(e)); }
             });
         };
-        for (EditText field : recorderFields) if (field != pass) field.addTextChangedListener(new TextWatcher() {
+        for (EditText field : new EditText[]{name,host,port,user,first,count,prefix,recorderLocationName}) field.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
             public void onTextChanged(CharSequence s, int start, int before, int count) { captureRecorderDraft(); }
             public void afterTextChanged(Editable e) { }
@@ -917,84 +884,34 @@ public final class MainActivity extends Activity {
         if (Looper.myLooper() == Looper.getMainLooper()) action.run(); else ui.post(action);
     }
 
-    private void showConnectionTest(Camera camera, Runnable onVerified) {
-        closeConnectionPreview(); releaseStreams();
-        final int generation = ++previewGeneration; previewVerified = false;
-        StreamCheckState checks = new StreamCheckState();
-        LinearLayout content = form(), choices = row();
-        Button sub = button(getString(R.string.tv_test_substream), () -> { });
-        Button main = button(getString(R.string.tv_test_mainstream), () -> { });
-        sub.setTag("stream-test-sub"); main.setTag("stream-test-main");
-        sub.setNextFocusRightId(main.getId()); main.setNextFocusLeftId(sub.getId());
-        addButton(choices, sub); addButton(choices, main); content.addView(choices);
-        TextView subResult = text("", 14, TEXT), mainResult = text("", 14, TEXT);
-        subResult.setTag("stream-result-sub"); mainResult.setTag("stream-result-main");
-        content.addView(subResult); content.addView(mainResult);
-        FrameLayout video = new FrameLayout(this);
-        content.addView(video, new LinearLayout.LayoutParams(-1, dp(220)));
-        content.addView(text(getString(R.string.tv_stream_checks_hint), 12, TEXT));
-        AlertDialog test = dialogBuilder().setTitle(getString(R.string.tv_connection_preview))
-                .setView(scroll(content)).setNegativeButton(getString(R.string.tv_back), null)
-                .setPositiveButton(onVerified == null ? getString(R.string.tv_done) : getString(R.string.tv_save_channels), null).create();
-        connectionPreview = test;
-        StreamTile[] active = {null};
-        String[] details = {"", ""};
-        Runnable refresh = () -> {
-            TextView[] views = {subResult, mainResult};
-            int[] names = {R.string.tv_substream, R.string.tv_mainstream};
-            for (StreamCheckState.Stream stream : StreamCheckState.Stream.values()) {
-                StreamCheckState.Status status = checks.status(stream);
-                String result = status == StreamCheckState.Status.NOT_TESTED ? getString(R.string.tv_stream_not_tested)
-                        : status == StreamCheckState.Status.TESTING ? getString(R.string.tv_stream_testing) : details[stream.ordinal()];
-                views[stream.ordinal()].setText(getString(R.string.tv_stream_result, getString(names[stream.ordinal()]), result));
-                views[stream.ordinal()].setTextColor(status == StreamCheckState.Status.FAILED ? 0xFFFFA6A6
-                        : status == StreamCheckState.Status.VERIFIED ? MINT : TEXT);
-            }
-            previewVerified = checks.canSave();
-            test.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(onVerified == null || previewVerified);
+    private void showConnectionTest(Camera camera,Runnable onVerified){
+        closeConnectionPreview();releaseStreams();final int generation=++previewGeneration;previewVerified=false;
+        StreamCheckState checks=new StreamCheckState();LinearLayout content=form();
+        Button sub=button(getString(R.string.tv_test_substream),()->{});sub.setTag("stream-test-sub");content.addView(sub);
+        TextView result=text("",16,TEXT);result.setTag("stream-result-sub");content.addView(result);
+        FrameLayout video=new FrameLayout(this);content.addView(video,new LinearLayout.LayoutParams(-1,dp(220)));
+        content.addView(text(getString(R.string.tv_substream_only),14,MINT));
+        AlertDialog test=dialogBuilder().setTitle(getString(R.string.tv_connection_preview)).setView(scroll(content)).setNegativeButton(getString(R.string.tv_back),null)
+            .setPositiveButton(onVerified==null?getString(R.string.tv_done):getString(R.string.tv_save_channels),null).create();
+        connectionPreview=test;StreamTile[] active={null};
+        Runnable begin=()->{
+            if(!started||generation!=previewGeneration||connectionPreview!=test||!test.isShowing())return;
+            int attempt=checks.begin(StreamCheckState.Stream.SUB);previewVerified=false;
+            test.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(onVerified==null);
+            if(active[0]!=null){active[0].release();streams.remove(active[0]);}video.removeAllViews();
+            result.setText(getString(R.string.tv_stream_testing));result.setTextColor(TEXT);
+            StreamTile preview=new StreamTile(this,camera,false,current.tcp);active[0]=preview;preview.setAutoRetry(false);streams.add(preview);video.addView(preview,new FrameLayout.LayoutParams(-1,-1));
+            preview.setListener(new StreamTile.Listener(){
+                public void onFirstFrame(){previewOnUi(()->{if(!started||generation!=previewGeneration||connectionPreview!=test||!checks.verified(attempt))return;
+                    previewVerified=checks.canSave();result.setText(getString(R.string.tv_stream_verified)+" • "+preview.detectedVideoCodec());result.setTextColor(MINT);test.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(onVerified==null||previewVerified);});}
+                public void onFailure(PlaybackFailure reason){previewOnUi(()->{if(!started||generation!=previewGeneration||connectionPreview!=test||!checks.failed(attempt))return;
+                    previewVerified=false;result.setText(UiText.playback(MainActivity.this,reason));result.setTextColor(0xFFFFA6A6);test.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(onVerified==null);});}
+            });preview.start(0);
         };
-        java.util.function.Consumer<StreamCheckState.Stream> begin = stream -> {
-            if (!started || generation != previewGeneration || connectionPreview != test || !test.isShowing()) return;
-            int attempt = checks.begin(stream);
-            if (active[0] != null) { active[0].release(); streams.remove(active[0]); }
-            video.removeAllViews();
-            StreamTile preview = new StreamTile(this, camera, stream == StreamCheckState.Stream.MAIN, current.tcp);
-            active[0] = preview; preview.setAutoRetry(false); streams.add(preview);
-            video.addView(preview, new FrameLayout.LayoutParams(-1, -1));
-            preview.setListener(new StreamTile.Listener() {
-                @Override public void onFirstFrame() {
-                    previewOnUi(() -> {
-                        if (!started || generation != previewGeneration || connectionPreview != test || !test.isShowing()
-                                || !checks.verified(attempt)) return;
-                        details[stream.ordinal()] = getString(R.string.tv_stream_verified) + " • " + preview.detectedVideoCodec();
-                        refresh.run();
-                    });
-                }
-                @Override public void onFailure(PlaybackFailure reason) {
-                    previewOnUi(() -> {
-                        if (!started || generation != previewGeneration || connectionPreview != test || !test.isShowing()
-                                || !checks.failed(attempt)) return;
-                        details[stream.ordinal()] = UiText.playback(MainActivity.this, reason);
-                        refresh.run();
-                    });
-                }
-            });
-            refresh.run(); preview.start(0);
-        };
-        sub.setOnClickListener(v -> begin.accept(StreamCheckState.Stream.SUB));
-        main.setOnClickListener(v -> begin.accept(StreamCheckState.Stream.MAIN));
-        test.setOnDismissListener(d -> {
-            checks.close();
-            if (active[0] != null) { active[0].release(); streams.remove(active[0]); active[0] = null; }
-            if (connectionPreview == test) { connectionPreview = null; previewVerified = false; previewGeneration++; }
-        });
-        test.setOnKeyListener((d, code, event) -> code == KeyEvent.KEYCODE_MENU);
-        test.show();
-        test.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            if (onVerified != null && (!started || !checks.canSave() || generation != previewGeneration)) return;
-            test.dismiss(); if (onVerified != null) onVerified.run();
-        });
-        begin.accept(StreamCheckState.Stream.SUB);
+        sub.setOnClickListener(v->begin.run());
+        test.setOnDismissListener(d->{checks.close();if(active[0]!=null){active[0].release();streams.remove(active[0]);active[0]=null;}if(connectionPreview==test){connectionPreview=null;previewVerified=false;previewGeneration++;}});
+        test.setOnKeyListener((d,key,event)->key==KeyEvent.KEYCODE_MENU);test.show();
+        test.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{if(onVerified!=null&&(!started||!checks.canSave()||generation!=previewGeneration))return;test.dismiss();if(onVerified!=null)onVerified.run();});begin.run();
     }
 
     private void startPhoneSetup() {
@@ -1026,7 +943,7 @@ public final class MainActivity extends Activity {
             pairingDialog = dialogBuilder().setTitle(getString(R.string.tv_set_up_from_phone))
                     .setView(content).setNegativeButton(getString(R.string.tv_close_pairing), null).create();
             PhoneSetupServer opened = phone;
-            pairingDialog.setOnDismissListener(d -> { opened.close(); if (phone == opened) phone = null; });
+            pairingDialog.setOnDismissListener(d -> { opened.close(); if (phone == opened) { closeConnectionPreview(); phone = null; } });
             pairingDialog.show();
             ui.postDelayed(() -> { if (phone == opened) { closePairing(); toast(getString(R.string.tv_phone_setup_session_ended)); } }, 600000);
         } catch (Exception e) { closePairing(); toast(getString(R.string.tv_no_local_network_address_connect_the_tv_to_your_lan_or_wi_fi)); }
@@ -1041,17 +958,9 @@ public final class MainActivity extends Activity {
         }
         if (action.equals("prepare")) {
             String id = input.optString("id"), type = input.optString("preset");
-            if (type.equals("CUSTOM")) {
-                Camera existing = null;
-                for (Camera c : current.cameras) if (("camera:" + c.id).equals(id)) existing = c;
-                String sub = input.optString("sub").trim(), main = input.optString("main").trim();
-                if (existing != null) { if (sub.isEmpty()) sub = existing.subUrl; if (main.isEmpty()) main = existing.mainUrl; }
-                CameraRules.validateUrl(sub); CameraRules.validateUrl(main);
-                if (input.optString("name").trim().isEmpty()) throw new IllegalArgumentException();
-                return new JSONObject().put("kind", "camera").put("id", existing == null ? "" : existing.id)
-                        .put("name", input.getString("name").trim()).put("sub", sub).put("main", main);
-            }
+            if(!type.equals("HIKVISION")&&!type.equals("VIGI_NVR"))throw new IllegalArgumentException(getString(R.string.tv_nvr_required));
             Nvr old = null; for (Nvr n : current.devices) if (n.id.equals(id)) old = n;
+            if(old==null&&!current.devices.isEmpty())throw new IllegalArgumentException(getString(R.string.tv_nvr_required));
             Nvr n = new Nvr(); if (old != null) n.id = old.id;
             n.name = input.getString("name").trim(); n.host = input.getString("host").trim(); n.preset = CameraRules.Preset.valueOf(type);
             n.port = Integer.parseInt(input.getString("port")); n.first = Integer.parseInt(input.getString("first"));
@@ -1062,18 +971,15 @@ public final class MainActivity extends Activity {
             n.validate(); return new JSONObject().put("kind", "nvr").put("nvr", ProfileStore.nvrJson(n, true));
         }
         if (action.equals("save")) {
-            if (input.getString("kind").equals("nvr")) ProfileStore.nvrFromJson(input.getJSONObject("nvr")).apply(current);
-            else {
-                Camera found = null;
-                for (Camera c : current.cameras) if (c.id.equals(input.optString("id"))) found = c;
-                CameraRules.validateUrl(input.getString("sub")); CameraRules.validateUrl(input.getString("main"));
-                if (found == null) {
-                    if (current.cameras.size() >= 256) throw new IllegalArgumentException();
-                    current.cameras.add(new Camera(input.getString("name"), input.getString("sub"), input.getString("main")));
-                } else { found.name = input.getString("name"); found.subUrl = input.getString("sub"); found.mainUrl = input.getString("main"); found.deviceId = ""; }
-            }
-            if (!persist()) throw new IllegalStateException();
-            render(); return new JSONObject().put("message", getString(R.string.tv_saved_on_tv_you_can_close_pairing_and_start_watching));
+            if(!input.getString("kind").equals("nvr"))throw new IllegalArgumentException(getString(R.string.tv_nvr_required));
+            Nvr incoming=ProfileStore.nvrFromJson(input.getJSONObject("nvr"));
+            if(!current.devices.isEmpty()&&!current.devices.get(0).id.equals(incoming.id))throw new IllegalArgumentException(getString(R.string.tv_nvr_required));
+            Location target=current;PhoneSetupServer requestedSession=phone;
+            showConnectionTest(new Camera(incoming.prefix+" "+incoming.first,incoming.url(incoming.first,false),incoming.url(incoming.first,true)),()->{
+                if(!technician||!started||current!=target||(requestedSession!=null&&(phone!=requestedSession||!requestedSession.isActive()))){toast(getString(R.string.tv_pairing_ended));return;}
+                try{incoming.apply(target);if(persist())render();}catch(IllegalArgumentException error){toast(validationMessage(error));}
+            });
+            return new JSONObject().put("pendingTv",true).put("message",getString(R.string.tv_confirm_phone_on_tv));
         }
         throw new IllegalArgumentException();
     }

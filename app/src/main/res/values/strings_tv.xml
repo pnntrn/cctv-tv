@@ -4,7 +4,7 @@
     <string name="tv_grid_help">"  •  OK เต็มจอ  •  กด OK ค้าง 1 วินาที: เมนูดูภาพ"</string>
     <string name="tv_setup">ตั้งค่าสำหรับช่าง</string>
     <string name="tv_setup_suffix">" / ตั้งค่าสำหรับช่าง"</string>
-    <string name="tv_transport">"ภาพหลัก: TCP • ภาพรอง: "</string>
+    <string name="tv_transport">"การเชื่อมต่อภาพรอง: "</string>
     <string name="tv_move_camera_up">ย้าย %1$s ขึ้น</string>
     <string name="tv_move_camera_down">ย้าย %1$s ลง</string>
     <string name="tv_primary_recorder">%1$s • %2$d ช่องกล้อง</string>

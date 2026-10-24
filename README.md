@@ -8,9 +8,9 @@
 
 [การใช้งานภาษาไทย](#วิธีใช้งาน) · [Contributing](CONTRIBUTING.md) · [Release guide](docs/RELEASING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 
-A native Android TV / Google TV RTSP viewer for Android 8.0+. Direct connections to Hikvision, VIGI and custom RTSP cameras. No cloud account, streaming server, WebView or analytics. The development branch uses libVLC for MAIN and Media3 for SUB/grid; the public0.4.5 candidate linked below predates that engine change.
+A native Android TV / Google TV RTSP viewer for Android8.0+, with direct NVR connections and no cloud account. Development0.5.0 uses **substreams in every view**, including fullscreen and technician previews. The unused libVLC runtime has been removed.
 
-Development0.4.6 is under evaluation for continuously choppy MAIN playback ([Issue #2](https://github.com/pnntrn/cctv-tv/issues/2)); it is not yet an approved public release. Repository commands and safety rules are in [AGENTS.md](AGENTS.md), with optional build variables in [.env.example](.env.example).
+This branch implements [the substream TV workflow](docs/superpowers/specs/2026-10-25-substream-tv-workflow-design.md) ([Issue#4](https://github.com/pnntrn/cctv-tv/issues/4)). It is not a published release. The public0.4.5 APK below has the older controls; see its tagged README for its behavior. Build/safety guidance: [AGENTS.md](AGENTS.md), [.env.example](.env.example).
 
 ## Download
 
@@ -22,57 +22,45 @@ Version 0.4.5 corrects HEVC keyframe flags for recorder streams whose continuati
 
 [Source and updated usage documentation for this candidate](https://github.com/pnntrn/cctv-tv/tree/v0.4.5-rc.1#readme) · [Review PR #1](https://github.com/pnntrn/cctv-tv/pull/1) (unmerged).
 
-## Viewing
+## Viewing in development0.5.0
 
-- The app opens the last location's edge-to-edge camera grid. After four seconds without remote input, controls, camera labels and selection borders hide. Playback errors remain visible.
-- Multiple locations; 1, 4, 9 or 16 live substreams per page; up to 256 saved cameras per location. Use the D-pad at left/right grid edges to reach the previous/next page.
-- D-pad highlights a tile. **OK** opens the mainstream. **Back** restores the substream grid and focused camera.
-- Left/right changes fullscreen camera. OK toggles main/substream. Mainstream failure automatically falls back once to the substream.
-- Fullscreen labels hide after four seconds; remote input reveals them again. Playback errors remain visible.
-- The last location, camera and grid page are remembered after a normal close / reopen.
-- Hold **OK for one second** to open viewing options for the grid, grid size and existing locations. A short OK still opens the selected camera or toggles its fullscreen stream. Holding OK never opens editing controls. Remotes with a Menu button can still short-press it for viewing options.
-- Inside the viewing menu, choose **ตั้งค่า** (Settings), then confirm **เข้าสู่การตั้งค่า**, to enter technician setup. Remotes with Menu may also hold Menu for three seconds from viewing. Reorder cameras there with the up/down actions or a numbered move. Returning to viewing or backgrounding ends technician access.
-- Only the current page plays. Fullscreen releases all grid decoders. Settings, arrangement and backgrounding release playback. Audio is disabled in this version.
-- Controls use Thai labels, visible remote focus and 48dp targets. The idle viewing grid has no decorative gaps or borders. Video keeps its original aspect ratio.
+- Substream only: grid, fullscreen and setup never request the saved mainstream URL. Recorder encoding/recording quality is unchanged.
+- Borderless layouts1/4/6/8/9/16. Six has one large2x2 cell and five small cells; video retains its aspect ratio. Fewer simultaneous cameras may be necessary on limited TV hardware.
+- D-pad selects a camera; OK opens fullscreen. Back returns to the CCTV grid and stays there when already home. Android Home keeps its system behavior.
+- Remote/pointer activity reveals the top bar; it hides after4s idle. A focused bar control stays visible. Up from the first camera row reaches the bar; Down returns to cameras.
+- Left icon cycles layout; long Left opens the layout picker. Right icon or long Right opens location selection. The location name is centered. Short Left/Right still navigate cameras, including pages.
+- In fullscreen, short OK focuses the toolbar without switching streams; Left/Right changes camera. Hold OK1s for the viewing menu. Settings requires a separate confirmation; Back never opens setup.
+- Hidden channels stay saved but do not play or appear in normal viewing. Offline channels are not automatically hidden.
 
 ### วิธีใช้งาน
 
-เปิดแอปเพื่อดูตารางกล้องเต็มจอ กดลูกศรเพื่อเลือกกล้อง แล้วกด **OK** เพื่อดูเต็มจอ กด **ย้อนกลับ** เพื่อกลับตาราง เมนูและกรอบเลือกจะหายไปเมื่อไม่กดรีโมต 4 วินาที
+แอปใช้ภาพรองทุกมุมมอง กดลูกศรเพื่อเลือกกล้อง แล้วกด **OK** เพื่อดูเต็มจอ กด **ย้อนกลับ** เพื่อกลับตาราง เมนูและกรอบเลือกจะซ่อนเมื่อไม่กดรีโมต4วินาที
 
-กด **OK ค้าง 1 วินาที** เพื่อเปิดเมนูเปลี่ยนรูปแบบตารางหรือสถานที่ สำหรับช่าง ให้เปิดเมนูนี้แล้วเลือก **ตั้งค่า** จากนั้นเลือก **เข้าสู่การตั้งค่า** เพื่อเพิ่ม แก้ไข หรือลบข้อมูล กด OK หรือย้อนกลับสั้น ๆ เพื่อใช้งานดูกล้องตามปกติ หน้าดูกล้องปกติไม่มีปุ่มแก้ไขข้อมูล
+แถบบนมีไอคอนจำนวนกล้องด้านซ้าย ชื่อสถานที่ตรงกลาง และเปลี่ยนสถานที่ด้านขวา กดซ้ายค้างเพื่อเลือกรูปแบบตาราง หรือขวาค้างเพื่อเลือกสถานที่ มีตาราง6กล้องแบบภาพใหญ่1ภาพเล็ก5
 
-Sixteen streams requires enough hardware decoders. Start with four tiles on smaller sticks. Suggested initial substream encoding: H.264, roughly 640×360 or 640×480, 5–10 fps and 256–512 kbps; tune the NVR itself. No measured stream-count or latency guarantee is made.
+## Technician setup and channels
 
-## Setup and recorder editing
+1. Hold OK1s → **ตั้งค่า** → confirm technician entry. Add a location and its Hikvision/VIGI NVR together; one location has one NVR. Existing profiles with several NVRs are split without deleting channels or credentials. Legacy unlinked cameras remain viewable/manageable; there is no new standalone/custom-camera add flow.
+2. The recorder editor includes location name and default grid, address, credentials and channel range. **Test & save** displays only the substream and detects H.264/HEVC after an actual rendered frame. Saving stays disabled until that frame.
+3. **จัดเรียงและซ่อนช่องกล้อง** shows six live previews per page. Select a source camera, then a destination to swap. Use **ซ่อน/แสดงกล้องที่เลือก** or hold OK on a channel to toggle visibility. **บันทึกการจัดเรียง** saves; Cancel/Back/background restores the original order and visibility.
+4. Location/NVR removal requires confirmation and removes only the app profile, not recorder data. Raw camera URLs and passwords are not shown on the viewing screen.
 
-1. Hold **OK for one second**, then choose **ตั้งค่า** (Settings) in the viewing menu. Confirm technician setup and create a location, such as **Shop**.
-2. Choose **เพิ่มเครื่องบันทึก**. One NVR is the primary setup for each location; an existing recorder gets **แก้ไขเครื่องบันทึก** instead. Additional NVRs and standalone/custom cameras are available under **ขั้นสูง**.
-3. Enter the recorder address, RTSP port, credentials and channel range.
-4. **Test & save** opens the first channel’s picture tests. Use **ทดสอบภาพรอง / ทดสอบภาพหลัก** to test each stream and see its detected codec. Saving requires a decoded substream; the main result stays separate. See [codec/device compatibility](docs/COMPATIBILITY.md).
-5. Use **แก้ไขเครื่องบันทึก** to edit the location's primary NVR, or **ขั้นสูง → เครื่องบันทึกทั้งหมด** for additional recorders. Existing linked camera IDs, names and order stay intact. Channels outside a changed range are removed; new channels are appended.
+Nonsecret drafts include location/default-grid fields. Passwords are never stored in drafts and are cleared on background/recreation. A blank password while editing an existing NVR retains its saved credential. Settings access ends when returning to viewing or backgrounding.
 
-Recorder drafts retain non-secret form fields across backgrounding and recreation. Passwords are never stored in drafts; backgrounding clears the entered password and preview verification. Back offers Keep draft or Discard. Re-enter technician setup to resume, then test again before saving. A blank password while editing an existing recorder keeps its saved credential.
-
-Canonical preset URLs from the original app are linked to shared recorder settings when the old profile file is loaded. Other URLs stay standalone. Editing a camera's URLs directly makes it standalone, so later recorder edits do not overwrite the custom URLs. Standalone camera forms include a test preview and an explicit show/hide URLs control.
-
-| Device | Substream | Mainstream |
+| NVR | Substream channel1 | Substream channel16 |
 | --- | --- | --- |
-| Hikvision NVR channel 1 | `/Streaming/Channels/102` | `/Streaming/Channels/101` |
-| Hikvision NVR channel 16 | `/Streaming/Channels/1602` | `/Streaming/Channels/1601` |
-| VIGI NVR channel 1 | `/live/1/2/avm` | `/live/1/1/avm` |
-| VIGI standalone camera | `/stream2` | `/stream1` |
+| Hikvision | `/Streaming/Channels/102` | `/Streaming/Channels/1602` |
+| VIGI NVR | `/live/1/2/avm` | `/live/16/2/avm` |
 
-VIGI NVR RTSP requires compatible firmware and an enabled server. Camera paths `/stream1` and `/stream2` are not NVR channel paths. Custom URLs support firmware-specific alternatives. Credentials entered in the preset form are escaped automatically.
+Actual firmware/codec/decoder capacity must be tested on the TV; a preset is not a universal compatibility guarantee. Saved legacy MAIN URLs remain encrypted data for profile compatibility, and are never played in0.5.0.
 
 ## Set up from your phone
 
-1. Enter technician setup, then choose **ขั้นสูง → ตั้งค่าผ่านโทรศัพท์**.
-2. On a phone on the same trusted LAN/Wi-Fi, open the address shown on the TV.
-3. Enter the six-digit pairing code. One phone is allowed per session; five failed PIN attempts close access. The session expires after ten minutes, closes when the TV dialog closes, and stops when the app backgrounds.
-4. Add or edit a recorder or standalone camera. Blank saved passwords/URLs keep their existing values; saved passwords and RTSP URLs are never sent back to the phone.
-5. **Test connection** checks RTSP authentication and whether a video stream exists. It is a protocol check, not a decoder/picture guarantee. **Save to TV** uses a single-use proof for that exact tested configuration. A TV preview verifies decoding separately.
+Technician setup → **ขั้นสูง → ตั้งค่าผ่านโทรศัพท์** opens temporary local pairing. Use the address/PIN shown on the TV on a trusted LAN. The phone can edit the location's single NVR, not create standalone cameras or a second NVR. Passwords/URLs are not returned to the phone.
 
-This is a temporary local HTTP service, not a cloud service. Use a trusted network: credentials travel over that local connection. The service uses an origin/host check, same-site HTTP-only session cookies, a bounded request size and one paired IP. It has no file browsing, cloud relay, open CORS or background setup server. Closing pairing prevents pending drafts from being saved and invalidates the session.
+The phone's RTSP test establishes protocol reachability only. Sending the tested settings opens a substream preview on the TV; **the user must see a decoded picture and confirm Save on the TV** before profiles change. The phone reports pending TV confirmation rather than falsely claiming a save.
+
+Pairing uses an expiring single-IP session, origin/host checks, HTTP-only same-site cookies and a single-use configuration proof. Closing/backgrounding ends setup. Credentials travel over local HTTP, so use a trusted network.
 
 ## Error messages
 
@@ -82,7 +70,7 @@ Authentication rejection, missing stream paths, network reachability, timeouts a
 
 [GitHub Actions](https://github.com/pnntrn/cctv-tv/actions) produces **cctv-tv-apks** with:
 
-- `cctv-tv-debug.apk`: installable development build.
+- Debug/test APKs are in **ui-test-apks** when the native test job is requested; release artifacts are not duplicated on PRs.
 - `cctv-release.apk`: installable optimized release **when retained signing is configured**.
 - `cctv-release-unsigned.apk`: build output when signing is not configured; cannot be installed directly.
 - `SHA256SUMS`: hashes of the outputs.
@@ -151,4 +139,4 @@ The original CCTV project code currently has no project license; public source a
 
 ## License
 
-Original CCTV code is licensed under [GPLv3 or later](LICENSE), as approved by the owner. Vendored Media3 remains under its Apache2.0 notices; LibVLC and its components retain their own licenses and source obligations. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the [LibVLC source index](third_party/libvlc/SOURCE-INDEX.md). Development0.4.6 remains a private evaluation until native/device checks, distribution materials and explicit release approval are complete.
+Original CCTV code is licensed under [GPLv3 or later](LICENSE), as approved by the owner. Vendored Media3 remains under its Apache2.0 notices. LibVLC was a historical private experiment and is not bundled in0.5.0. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Public release/tag/feed publication still requires explicit approval.

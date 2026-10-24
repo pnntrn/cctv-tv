@@ -25,6 +25,8 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 @UnstableApi
 public final class StreamTile extends FrameLayout {
     private static final String STATS_TAG = "CCTVPlayback";
+    private static final java.util.concurrent.atomic.AtomicInteger NEXT_STATS_ID = new java.util.concurrent.atomic.AtomicInteger();
+    private final int statsId = NEXT_STATS_ID.incrementAndGet();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final SurfaceView surface;
     private final TextView status;
@@ -186,7 +188,7 @@ public final class StreamTile extends FrameLayout {
         androidx.media3.exoplayer.DecoderCounters counters = player.getVideoDecoderCounters();
         if (counters == null) return;
         counters.ensureUpdated();
-        android.util.Log.d(STATS_TAG, "event=" + event + " kind=SUB"
+        android.util.Log.d(STATS_TAG, "event=" + event + " kind=SUB" + " player=" + statsId
                 + " atMs=" + SystemClock.elapsedRealtime() + " state=" + player.getPlaybackState()
                 + " posMs=" + player.getCurrentPosition()
                 + " bufferMs=" + Math.max(0, player.getBufferedPosition() - player.getCurrentPosition())

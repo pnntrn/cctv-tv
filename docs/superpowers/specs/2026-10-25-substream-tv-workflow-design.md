@@ -10,7 +10,7 @@ The owner requested review and implementation after the proposed flow. Proceed w
 - Runtime layout selection remembers the location's last choice; the technician separately sets its default layout. New/restarted location viewing starts with its saved last layout, initially the default.
 
 ## Technician setup
-- Retain protected technician entry (hold OK for viewing menu, then hold Back3s plus confirmation); visible Settings requires the same confirmation. Parents can select layout/location without entering setup.
+- Retain protected technician entry: hold OK for viewing menu, then select Settings and confirm. Back closes the menu safely, including a long Back press; no hidden Back-to-settings gesture. Parents can select layout/location without entering setup.
 - NVR-only CRUD: create a location and its NVR together, location name and default grid in the same editor. Existing location has one recorder to edit/delete; no standalone camera/raw-URL add path or second recorder add path. Deleting an NVR/location requires confirmation and deletes only the app profile, never the recorder.
 - Channel management has live substream previews, camera name/channel, visible/hidden state. Select a source then destination to swap; explicit save/cancel. Hidden channels retain configuration and never run in normal viewing. Offline channels remain visible unless explicitly hidden. All-hidden state provides a clear route to technician setup.
 - Changes to order/visibility are staged until Save; Back cancels. Only visible page previews run; release on page change, background and exit.

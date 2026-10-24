@@ -1,0 +1,27 @@
+<resources>
+    <string name="tv_layout_control">จำนวนกล้องในตาราง: %1$d • กดเพื่อเปลี่ยน • กดซ้ายค้างเพื่อเลือก</string>
+    <string name="tv_location_control">เปลี่ยนสถานที่ • กดขวาค้างเพื่อเลือก</string>
+    <string name="tv_layout_option">%1$d กล้อง</string>
+    <string name="tv_layout_six">6 กล้อง • ภาพใหญ่ 1 ภาพเล็ก 5</string>
+    <string name="tv_default_grid">จำนวนกล้องในตารางเริ่มต้น</string>
+    <string name="tv_manage_channels">จัดเรียงและซ่อนช่องกล้อง</string>
+    <string name="tv_channel_edit_hint">เลือกกล้องต้นทาง แล้วเลือกปลายทางเพื่อสลับ • ซ่อนหรือแสดงกล้องที่เลือก • บันทึกเมื่อเสร็จ</string>
+    <string name="tv_channel_source">เลือกต้นทางแล้ว: %1$s</string>
+    <string name="tv_hide_selected">ซ่อนกล้องที่เลือก</string>
+    <string name="tv_show_selected">แสดงกล้องที่เลือก</string>
+    <string name="tv_hidden_channel">ซ่อนไว้</string>
+    <string name="tv_save_arrangement">บันทึกการจัดเรียง</string>
+    <string name="tv_cancel_arrangement">ยกเลิกการจัดเรียง</string>
+    <string name="tv_all_channels_hidden">ยังไม่มีช่องกล้องที่แสดง • กด OK ค้างเพื่อเปิดเมนูและตั้งค่าช่องกล้อง</string>
+    <string name="tv_substream_only">ใช้ภาพรองทุกมุมมอง • ไม่เปลี่ยนคุณภาพการบันทึกของ NVR</string>
+    <string name="tv_channel_hidden_label">%1$s • ซ่อนไว้</string>
+    <string name="tv_page_label">%1$s • หน้า %2$d/%3$d</string>
+    <string name="tv_add_nvr_location">เพิ่มสถานที่และ NVR</string>
+    <string name="tv_nvr_required">สถานที่หนึ่งแห่งใช้ NVR ได้หนึ่งเครื่อง</string>
+    <string name="tv_delete_nvr_location">ลบสถานที่และ NVR นี้ออกจากแอป</string>
+    <string name="tv_fullscreen_sub_help">ภาพรอง • OK แถบเมนู • ย้อนกลับ ตารางกล้อง</string>
+    <string name="tv_channels_preview">ตัวอย่างภาพช่องกล้อง</string>
+    <string name="tv_empty_location_name">กรุณาระบุชื่อสถานที่</string>
+    <string name="tv_resume_draft">ทำต่อจากฉบับร่าง</string>
+    <string name="tv_confirm_phone_on_tv">ดูภาพรองบนทีวี แล้วกดบันทึกช่องกล้องบนทีวีเพื่อยืนยัน</string>
+</resources>
