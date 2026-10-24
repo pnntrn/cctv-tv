@@ -13,7 +13,7 @@ CCTV0.5.0 (version code1015) is unreleased. The repository is `pnntrn/cctv-tv`; 
 
 Push the reviewed candidate tag only when ready to publish. The tag workflow publishes after both build and native TV checks pass. It uses `scripts/prepare-release.py` to reject unsigned APKs, wrong package/certificate and mismatched version/tag inputs before preparing release assets. Consult `python3 scripts/prepare-release.py --help` for its exact local interface. Pull requests without signing credentials must still build and test; unsigned outputs must never be published as installable releases.
 
-The installable asset is `cctv-release.apk`, accompanied by `SHA256SUMS` and the applicable license/notices. Mark `v0.4.5-rc.1` as a prerelease. Release notes must retain the outstanding Hikvision/Mi Box, 11-channel, decoder-capacity and in-place update/profile checks. Keep the review PR unmerged until its review is complete.
+The installable asset is `cctv-release.apk`, accompanied by `SHA256SUMS` and the applicable license/notices. An approved `v0.5.0-rc.1` tag should be a prerelease. Release notes must accurately distinguish synthetic decoder checks from physical Mi Box capacity and in-place update/profile checks. Keep the review PR unmerged until its review is complete and merge is explicitly approved.
 
 After publication, download the APK and checksums anonymously from [Releases](https://github.com/pnntrn/cctv-tv/releases). Check the SHA-256 and inspect it using Android SDK tools:
 

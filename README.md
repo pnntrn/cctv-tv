@@ -85,7 +85,9 @@ The old development build used an ephemeral debug key. Moving from that build to
 
 ## Native UI preview
 
-These are native emulator screenshots using deliberately offline fixture cameras, not real CCTV footage.
+Native emulator captures use synthetic camera fixtures. The six-view capture contains six actually decoded test feeds.
+
+![Six substreams, one large and five small](docs/screenshots/six-live.png)
 
 ![Live camera grid](docs/screenshots/grid.png)
 

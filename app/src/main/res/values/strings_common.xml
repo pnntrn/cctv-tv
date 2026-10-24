@@ -4,8 +4,8 @@
     <string name="common_retry">ลองอีกครั้ง</string>
     <string name="common_connecting">กำลังเชื่อมต่อ…</string>
     <string name="common_stream_main">%1$s   •   ภาพหลัก</string>
-    <string name="common_stream_sub">%1$s   •   ภาพย่อย</string>
-    <string name="common_stream_fullscreen_description">%1$s ภาพหลักเต็มจอ</string>
+    <string name="common_stream_sub">%1$s   •   ภาพรอง</string>
+    <string name="common_stream_fullscreen_description">%1$s ภาพรองเต็มจอ</string>
     <string name="common_stream_grid_description">%1$s กด OK เพื่อดูเต็มจอ</string>
     <string name="common_stream_retry">%1$s • ลองใหม่ใน %2$d วินาที</string>
     <string name="common_validation_error">ตรวจสอบข้อมูลที่กรอก แล้วลองอีกครั้ง</string>
