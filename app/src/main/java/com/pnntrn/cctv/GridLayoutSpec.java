@@ -55,13 +55,15 @@ public final class GridLayoutSpec {
         if (dx == 0 && dy == 0) return selected;
         List<Cell> cells = cells(6);
         Cell source = cells.get(local);
-        int candidate = nearest(cells, source, dx, dy, false);
-        if (candidate >= 0) return Math.min(count - 1, start + candidate);
+        List<Cell> currentPage = cells.subList(0, Math.min(6, count - start));
+        int candidate = nearest(currentPage, source, dx, dy, false);
+        if (candidate >= 0) return start + candidate;
         // Like square layouts, only horizontal edges move to another page.
         if (dy != 0 || (dx < 0 && start == 0) || (dx > 0 && start + 6 >= count)) return selected;
         int pageStart = start + (dx > 0 ? 6 : -6);
-        candidate = nearest(cells, source, dx, 0, true);
-        return Math.min(count - 1, pageStart + candidate);
+        List<Cell> adjacentPage = cells.subList(0, Math.min(6, count - pageStart));
+        candidate = nearest(adjacentPage, source, dx, 0, true);
+        return candidate < 0 ? selected : pageStart + candidate;
     }
     private static int nearest(List<Cell> cells, Cell source, int dx, int dy, boolean nextPage) {
         double best = Double.MAX_VALUE;

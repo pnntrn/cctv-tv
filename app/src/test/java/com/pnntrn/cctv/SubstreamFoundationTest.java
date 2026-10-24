@@ -44,6 +44,22 @@ public class SubstreamFoundationTest {
         assertEquals(0, TvViewingState.move(0, 0, 6, 1, 0));
         assertEquals(5, TvViewingState.move(99, 6, 6, 0, 0));
     }
+    @Test public void sixWithTwoCamerasCannotMoveDownToAnAbsentLowerCell() {
+        assertEquals(0, TvViewingState.move(0, 2, 6, 0, 1));
+        assertEquals(1, TvViewingState.move(1, 2, 6, 0, 1));
+        assertEquals(6, TvViewingState.move(6, 8, 6, 0, 1));
+        assertEquals(7, TvViewingState.move(7, 8, 6, 0, 1));
+        assertEquals(6, TvViewingState.move(1, 8, 6, 1, 0));
+        assertEquals(1, TvViewingState.move(6, 8, 6, -1, 0));
+    }
+    @Test public void sixWithThreeCamerasOnlyMovesDownAlongTheExistingRightColumn() {
+        assertEquals(0, TvViewingState.move(0, 3, 6, 0, 1));
+        assertEquals(2, TvViewingState.move(1, 3, 6, 0, 1));
+        assertEquals(2, TvViewingState.move(2, 3, 6, 0, 1));
+        assertEquals(6, TvViewingState.move(6, 9, 6, 0, 1));
+        assertEquals(8, TvViewingState.move(7, 9, 6, 0, 1));
+        assertEquals(8, TvViewingState.move(8, 9, 6, 0, 1));
+    }
     @Test public void visibilityFilteringRetainsConfigurationAndCanBeEmpty() {
         Location location = new Location("Home");
         Camera first = camera("one", ""), second = camera("two", "");
