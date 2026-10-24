@@ -47,6 +47,7 @@ public final class MainActivity extends Activity {
     private final java.util.Set<AlertDialog> dialogs = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
     private TextView viewingHelp;
     private final TvViewingState remote = new TvViewingState();
+    private final ViewingBackState viewingBack = new ViewingBackState();
     private AlertDialog viewingMenu, technicianConfirmation;
     private final Runnable menuHold = () -> {
         if (viewingInputFocused() && remote.menuHeld(android.os.SystemClock.uptimeMillis())) confirmTechnician();
@@ -57,7 +58,7 @@ public final class MainActivity extends Activity {
     };
     private ArrayList<Camera> originalOrder;
     private View viewingBar;
-    private android.widget.ImageButton layoutControl, locationControl;
+    private android.widget.ImageButton layoutControl, locationControl, nextPageControl, settingsControl;
     private java.util.Map<String,Boolean> originalHidden;
     private EditText recorderLocationName;
     private Spinner recorderDefaultGrid;
@@ -163,9 +164,12 @@ public final class MainActivity extends Activity {
         try { if (updater == null) updater = new AppUpdater(this); updater.show(); }
         catch (Exception e) { toast(getString(R.string.tv_cannot_open_updates_restart_cctv_and_retry)); }
     }
-    private final Runnable hideChrome = () -> setViewingChrome(false);
+    private final Runnable hideChrome = () -> {
+        if (managing || arranging || dialogs.stream().anyMatch(AlertDialog::isShowing)) return;
+        if (viewingBar != null && viewingBar.hasFocus()) focusViewingContent();
+        setViewingChrome(false);
+    };
     private void setViewingChrome(boolean visible) {
-        if (!visible && viewingBar != null && viewingBar.hasFocus()) return;
         chromeVisible = visible;
         if (viewingBar != null) viewingBar.setVisibility(visible ? View.VISIBLE : View.GONE);
         for (StreamTile stream : streams) stream.setChromeVisible(visible);
@@ -181,7 +185,7 @@ public final class MainActivity extends Activity {
     }
     private void revealChrome() {
         ui.removeCallbacks(hideChrome); setViewingChrome(true);
-        if (!managing && !arranging) ui.postDelayed(hideChrome, 4000);
+        if (!managing && !arranging) ui.postDelayed(hideChrome, 1500);
     }
     private boolean viewingInputFocused() {
         if (!started || managing || technicianConfirmation != null) return false;
@@ -194,6 +198,7 @@ public final class MainActivity extends Activity {
     }
     private void confirmTechnician() {
         if (technician || technicianConfirmation != null) return;
+        viewingBack.reset();
         cancelRemoteHolds();
         if (viewingMenu != null) viewingMenu.dismiss();
         AlertDialog dialog = dialogBuilder().setTitle(getString(R.string.tv_technician_setup))
@@ -290,9 +295,11 @@ public final class MainActivity extends Activity {
         render();
     }
 
-    @Override protected void onStart() { super.onStart(); started = true; if (storageOkay) { render(); } }
-    @Override protected void onResume() { super.onResume(); if (updater != null) updater.resume(); }
+    @Override protected void onStart() { super.onStart(); viewingBack.reset(); started = true; if (storageOkay) { render(); } }
+    @Override protected void onResume() { super.onResume(); viewingBack.reset(); for (StreamTile stream : streams) stream.setHealthPolling(true); if (updater != null) updater.resume(); }
     @Override protected void onPause() {
+        viewingBack.reset();
+        for (StreamTile stream : streams) stream.setHealthPolling(false);
         cancelRemoteHolds();
         protectRecorderOnBackground(); endTechnician();
         for (AlertDialog dialog : new ArrayList<>(dialogs)) dialog.dismiss(); dialogs.clear();
@@ -301,6 +308,7 @@ public final class MainActivity extends Activity {
         super.onPause();
     }
     @Override protected void onStop() {
+        viewingBack.reset();
         cancelRemoteHolds();
         protectRecorderOnBackground();
         if (updater != null) updater.stop();
@@ -320,7 +328,8 @@ public final class MainActivity extends Activity {
         if (updater != null) updater.close(); releaseStreams(); super.onDestroy(); }
     @Override public void onWindowFocusChanged(boolean focus) {
         super.onWindowFocusChanged(focus);
-        if (focus) immersive(); else cancelRemoteHolds();
+        if (focus) { immersive(); if (started && !managing) revealChrome(); }
+        else { viewingBack.reset(); cancelRemoteHolds(); }
     }
     @Override protected void onSaveInstanceState(Bundle out) {
         captureRecorderDraft();
@@ -345,7 +354,7 @@ public final class MainActivity extends Activity {
     }
     private int dp(int n) { return Math.round(n * getResources().getDisplayMetrics().density); }
     private void releaseStreams() {
-        fullscreenToken++; ui.removeCallbacks(hideChrome); fullTile = null; fullHelp = null; viewingHelp = null; viewingBar = null; layoutControl = null; locationControl = null;
+        fullscreenToken++; ui.removeCallbacks(hideChrome); fullTile = null; fullHelp = null; viewingHelp = null; viewingBar = null; layoutControl = null; locationControl = null; nextPageControl = null; settingsControl = null;
         for (StreamTile stream : streams) stream.release(); streams.clear();
     }
 
@@ -413,18 +422,23 @@ public final class MainActivity extends Activity {
     private void applyLayout(int size) {
         if(current==null||arranging) return;
         boolean keepControlFocus=layoutControl!=null&&layoutControl.hasFocus();
-        current.grid=size; page=focusedCamera/size; if(!persist())return; render();
+        current.grid=size; fullscreen=-1; page=focusedCamera/size; if(!persist())return; render();
         if(keepControlFocus&&layoutControl!=null)layoutControl.requestFocus();
     }
     private android.widget.ImageButton toolbarIcon(int drawable,String tag,String label,Runnable click) {
         android.widget.ImageButton b=new android.widget.ImageButton(this); b.setId(View.generateViewId()); b.setTag(tag);
         b.setImageResource(drawable); b.setContentDescription(label); b.setTooltipText(label);
-        b.setPadding(dp(12),dp(12),dp(12),dp(12)); focusStyle(b); b.setOnClickListener(v->click.run());
-        b.setOnFocusChangeListener((v,has)->{v.setBackground(box(has?0xFF24453F:PANEL,has?MINT:0));revealChrome();});
+        b.setPadding(dp(12),dp(12),dp(12),dp(12)); focusStyle(b); b.setOnClickListener(v->{viewingBack.reset();click.run();});
+        b.setOnFocusChangeListener((v,has)->{v.setBackground(box(has?0xFF24453F:PANEL,has?MINT:0));if(has)revealChrome();});
         return b;
     }
     private void addViewingBar(FrameLayout stage) {
         LinearLayout bar=row(); bar.setTag("viewing-toolbar"); bar.setPadding(dp(8),dp(4),dp(8),dp(4)); bar.setBackgroundColor(0xDA101825);
+        String layoutName=gridSize()==6?getString(R.string.tv_layout_six):getString(R.string.tv_layout_option,gridSize());
+        TextView name=text(getString(R.string.tv_viewing_caption,current==null?getString(R.string.app_name):current.name,
+                layoutName,page+1,CameraRules.pageCount(gridCameras().size(),gridSize())),18,TEXT);
+        name.setTag("location-title");name.setGravity(Gravity.CENTER_VERTICAL);name.setSingleLine(true);name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        viewingHelp=name;bar.addView(name,new LinearLayout.LayoutParams(0,dp(48),1));
         layoutControl=toolbarIcon(R.drawable.ic_grid_layout,"layout-control",getString(R.string.tv_layout_control,current==null?4:current.grid),()->{
             if(current==null)return; int[] sizes=GridLayoutSpec.sizes(); int at=0;
             for(int i=0;i<sizes.length;i++)if(sizes[i]==current.grid)at=i;
@@ -432,11 +446,13 @@ public final class MainActivity extends Activity {
         });
         layoutControl.setOnLongClickListener(v->{layoutPicker();return true;});
         bar.addView(layoutControl,new LinearLayout.LayoutParams(dp(48),dp(48)));
-        TextView name=text(current==null?getString(R.string.app_name):getString(R.string.tv_page_label,current.name,page+1,CameraRules.pageCount(gridCameras().size(),gridSize())),18,TEXT);
-        name.setTag("location-title"); name.setGravity(Gravity.CENTER);name.setSingleLine(true);name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        viewingHelp=name; bar.addView(name,new LinearLayout.LayoutParams(0,dp(48),1));
-        locationControl=toolbarIcon(R.drawable.ic_location_switch,"location-control",getString(R.string.tv_location_control),this::locationPicker);
+        locationControl=toolbarIcon(R.drawable.ic_location_switch,"location-control",getString(R.string.tv_location_control),this::cycleLocation);
+        locationControl.setOnLongClickListener(v->{locationPicker();return true;});
         bar.addView(locationControl,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        nextPageControl=toolbarIcon(R.drawable.ic_next_page,"next-page-control",getString(R.string.tv_next_page),this::nextPage);
+        bar.addView(nextPageControl,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        settingsControl=toolbarIcon(R.drawable.ic_settings,"settings-control",getString(R.string.tv_settings),this::confirmTechnician);
+        bar.addView(settingsControl,new LinearLayout.LayoutParams(dp(48),dp(48)));
         viewingBar=bar; stage.addView(bar,new FrameLayout.LayoutParams(-1,dp(56),Gravity.TOP));
     }
     private void render() {
@@ -470,14 +486,14 @@ public final class MainActivity extends Activity {
             tile.setBackgroundColor(android.graphics.Color.BLACK);if(absolute>=cameras.size())continue;
             Camera c=cameras.get(absolute);tile.setId(View.generateViewId());tile.setFocusable(true);tile.setFocusableInTouchMode(true);tile.setClickable(true);
             tile.setOnTouchListener((v,event)->{if(event.getAction()==android.view.MotionEvent.ACTION_DOWN)v.requestFocus();return false;});
-            if(started){StreamTile stream=new StreamTile(this,c,false,current.tcp);tile.addView(stream,new FrameLayout.LayoutParams(-1,-1));streams.add(stream);stream.start(slot*120L);}
+            if(started){StreamTile stream=new StreamTile(this,c,false,current.tcp);stream.setNameListener(()->{tile.setContentDescription(c.displayName()+getString(R.string.tv_camera_action));saveViewingSoon();});tile.addView(stream,new FrameLayout.LayoutParams(-1,-1));streams.add(stream);stream.start(slot*120L);}
             if(arranging){
                 TextView state=text((absolute+1)+" • "+c.name+(c.hidden?" • "+getString(R.string.tv_hidden_channel):""),14,c.hidden?0xFFFFCC86:MINT);
                 state.setBackgroundColor(0xDA101825);state.setTag("channel-state:"+c.id);tile.addView(state,new FrameLayout.LayoutParams(-1,-2,Gravity.TOP));
                 tile.setAlpha(c.hidden?.65f:1f);
             }
             tile.setOnFocusChangeListener((v,has)->{if(has){focusedCamera=absolute;if(!arranging)saveViewingSoon();else{Button hide=root.findViewWithTag("channel-hide");if(hide!=null)hide.setText(c.hidden?R.string.tv_show_selected:R.string.tv_hide_selected);}}setViewingChrome(chromeVisible);});
-            tile.setContentDescription(c.name+getString(R.string.tv_camera_action)+(arranging&&c.hidden?" • "+getString(R.string.tv_hidden_channel):""));
+            tile.setContentDescription(c.displayName()+getString(R.string.tv_camera_action)+(arranging&&c.hidden?" • "+getString(R.string.tv_hidden_channel):""));
             tile.setOnClickListener(v->{focusedCamera=absolute;if(arranging){if(grabbed<0)grabbed=absolute;else{CameraRules.swap(current.cameras,grabbed,absolute);grabbed=-1;}render();}else{fullscreen=absolute;fullSub=true;render();}});
             tile.setOnLongClickListener(v->{if(arranging){focusedCamera=absolute;toggleSelectedHidden();}return true;});tileViews.add(tile);
         }
@@ -505,11 +521,28 @@ public final class MainActivity extends Activity {
         if(grabbed>=0&&!arranging){toast(getString(R.string.tv_drop_the_camera_with_ok_first));return;}
         int size=gridSize();page=Math.floorMod(page+direction,CameraRules.pageCount(gridCameras().size(),size));focusedCamera=page*size;saveViewingSoon();render();
     }
+    private void nextPage(){
+        if(fullscreen>=0){page=fullscreen/gridSize();fullscreen=-1;}
+        changePage(1);
+        if(nextPageControl!=null)nextPageControl.requestFocus();
+    }
+    private void selectLocation(Location location){
+        viewingBack.reset();saveViewingSoon();current=location;
+        focusedCamera=TvViewingState.restoreCameraIndex(current.visibleCameras(),current.grid,current.lastPage,current.lastCameraId);
+        page=focusedCamera/current.grid;fullscreen=-1;rememberLocation();render();
+    }
+    private void cycleLocation(){
+        if(locations.isEmpty())return;
+        selectLocation(locations.get(Math.floorMod(locations.indexOf(current)+1,locations.size())));
+        if(locationControl!=null)locationControl.requestFocus();
+    }
     private void renderFullscreen(){
         base();root.setPadding(0,0,0,0);Camera camera=current.visibleCameras().get(fullscreen);fullSub=true;focusedCamera=fullscreen;saveViewingSoon();
         FrameLayout frame=new FrameLayout(this);root.addView(frame,new LinearLayout.LayoutParams(-1,-1));
-        if(started){StreamTile tile=new StreamTile(this,camera,false,current.tcp);fullTile=tile;streams.add(tile);frame.addView(tile,new FrameLayout.LayoutParams(-1,-1));tile.start(150);}
+        if(started){StreamTile tile=new StreamTile(this,camera,true,current.tcp);tile.setNameListener(this::saveViewingSoon);fullTile=tile;streams.add(tile);frame.addView(tile,new FrameLayout.LayoutParams(-1,-1));tile.start(150);}
         fullHelp=text(getString(R.string.tv_fullscreen_sub_help),13,TEXT);fullHelp.setBackgroundColor(0xB8101825);frame.addView(fullHelp,new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.START));
+        StreamTile captionTile=fullTile;
+        if(captionTile!=null)fullHelp.addOnLayoutChangeListener((v,left,top,right,bottom,oldLeft,oldTop,oldRight,oldBottom)->captionTile.setCaptionBottomInset(bottom-top));
         frame.setFocusable(true);frame.setFocusableInTouchMode(true);frame.requestFocus();addViewingBar(frame);revealChrome();
     }
     private boolean fullSub=true;
@@ -534,7 +567,8 @@ public final class MainActivity extends Activity {
     private void moveViewing(int dx,int dy){
         if(viewingBar!=null&&viewingBar.hasFocus()){
             if(dy>0)focusViewingContent();
-            else if(dx!=0){if(dx<0)layoutControl.requestFocus();else locationControl.requestFocus();}return;
+            else if(dx!=0){View[] controls={layoutControl,locationControl,nextPageControl,settingsControl};
+                for(int i=0;i<controls.length;i++)if(controls[i]!=null&&controls[i].hasFocus()){controls[Math.max(0,Math.min(controls.length-1,i+dx))].requestFocus();break;}}return;
         }
         if(current==null||gridCameras().isEmpty()){if(dy<0&&layoutControl!=null)layoutControl.requestFocus();return;}
         if(fullscreen>=0){if(dx!=0){fullscreen=Math.floorMod(fullscreen+dx,gridCameras().size());focusedCamera=fullscreen;render();}else if(dy<0&&layoutControl!=null)layoutControl.requestFocus();return;}
@@ -593,6 +627,7 @@ public final class MainActivity extends Activity {
         return true;
     }
     private boolean dispatchDialogKey(AlertDialog dialog, int key, KeyEvent event) {
+        viewingBack.reset();
         if (dialog == viewingMenu) {
             if (key == KeyEvent.KEYCODE_BACK) return dispatchViewingBack(event);
             if (key == KeyEvent.KEYCODE_MENU) return dispatchMenuKey(event);
@@ -604,12 +639,24 @@ public final class MainActivity extends Activity {
         return key == KeyEvent.KEYCODE_MENU;
     }
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        if(event.getKeyCode()!=KeyEvent.KEYCODE_BACK&&event.getAction()==KeyEvent.ACTION_DOWN)viewingBack.reset();
         if (recorderEditor != null) {
             if (event.getKeyCode() == KeyEvent.KEYCODE_MENU) return true;
             return super.dispatchKeyEvent(event);
         }
         int key = event.getKeyCode();
         if (key == KeyEvent.KEYCODE_BACK && remote.suppressPending(TvViewingState.Key.VIEWING_BACK, keyPhase(event))) return true;
+        if(key==KeyEvent.KEYCODE_BACK&&!managing&&!arranging){
+            long now=android.os.SystemClock.uptimeMillis();
+            if(event.getAction()==KeyEvent.ACTION_DOWN)viewingBack.down(now,event.getRepeatCount());
+            else if(event.getAction()==KeyEvent.ACTION_UP){
+                ViewingBackState.Action action=viewingBack.up(now,event.isCanceled());
+                if(action==ViewingBackState.Action.DEFAULT_GRID)restoreDefaultGrid();
+                else if(action==ViewingBackState.Action.HOME)startActivity(new android.content.Intent(android.content.Intent.ACTION_MAIN)
+                        .addCategory(android.content.Intent.CATEGORY_HOME).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+            }
+            return true;
+        }
         if (!managing && (key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT
                 || key == KeyEvent.KEYCODE_DPAD_UP || key == KeyEvent.KEYCODE_DPAD_DOWN
                 || key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER || key == KeyEvent.KEYCODE_MENU)) revealChrome();
@@ -628,16 +675,20 @@ public final class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed(){
+        viewingBack.reset();
         if(connectionPreview!=null){closeConnectionPreview();return;}
         if(recorderEditor!=null){askLeaveRecorder();return;}
         if(arranging){finishArrangement(false);return;}
         if(managing){endTechnician();render();return;}
-        if(fullscreen>=0){focusedCamera=fullscreen;page=fullscreen/current.grid;fullscreen=-1;fullSub=true;render();return;}
-        if(viewingBar!=null&&viewingBar.hasFocus())focusViewingContent();
-        revealChrome();
+        restoreDefaultGrid();
     }
-    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event){if(!managing&&started)revealChrome();return super.dispatchTouchEvent(event);}
-    @Override public boolean onGenericMotionEvent(android.view.MotionEvent event){if(!managing&&started)revealChrome();return super.onGenericMotionEvent(event);}
+    private void restoreDefaultGrid(){
+        if(current!=null){if(fullscreen>=0)focusedCamera=fullscreen;current.grid=current.defaultGrid;
+            focusedCamera=Math.max(0,Math.min(focusedCamera,current.visibleCameras().size()-1));page=focusedCamera/current.grid;}
+        fullscreen=-1;fullSub=true;render();saveViewingSoon();
+    }
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event){if(event.getAction()==android.view.MotionEvent.ACTION_DOWN)viewingBack.reset();if(!managing&&started)revealChrome();return super.dispatchTouchEvent(event);}
+    @Override public boolean onGenericMotionEvent(android.view.MotionEvent event){viewingBack.reset();if(!managing&&started)revealChrome();return super.onGenericMotionEvent(event);}
     private void toggleArrange(){
         if(!technician||current==null||current.cameras.isEmpty())return;
         if(arranging){finishArrangement(true);return;}
@@ -658,10 +709,7 @@ public final class MainActivity extends Activity {
         if (technician) names[names.length - 1] = getString(R.string.tv_add_location);
         dialogBuilder().setTitle(getString(R.string.tv_locations)).setItems(names, (d, which) -> {
             if (technician && which == locations.size()) editLocation(null);
-            else { current = locations.get(which);
-                focusedCamera = TvViewingState.restoreCameraIndex(current.visibleCameras(), current.grid, current.lastPage, current.lastCameraId);
-                page = focusedCamera / current.grid;
-                fullscreen = -1; rememberLocation(); render(); }
+            else selectLocation(locations.get(which));
         }).show();
     }
 
@@ -740,6 +788,7 @@ public final class MainActivity extends Activity {
         };
     }
     private void trackDialog(AlertDialog dialog) {
+        viewingBack.reset();
         dialogs.removeIf(previous -> !previous.isShowing());
         dialogs.add(dialog);
         dialog.setOnKeyListener((d, key, event) -> dispatchDialogKey(dialog, key, event));

@@ -8,7 +8,7 @@
 
 [การใช้งานภาษาไทย](#วิธีใช้งาน) · [Contributing](CONTRIBUTING.md) · [Release guide](docs/RELEASING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 
-A native Android TV / Google TV RTSP viewer for Android8.0+, with direct NVR connections and no cloud account. Development0.5.0 uses **substreams in every view**, including fullscreen and technician previews. The unused libVLC runtime has been removed.
+A native Android TV / Google TV RTSP viewer for Android8.0+, with direct NVR connections and no cloud account. Development0.5.1 uses **substreams in every view**, including fullscreen and technician previews. The unused libVLC runtime has been removed.
 
 This branch implements [the substream TV workflow](docs/superpowers/specs/2026-10-25-substream-tv-workflow-design.md) ([Issue#4](https://github.com/pnntrn/cctv-tv/issues/4)). It is not a published release. The public0.4.5 APK below has the older controls; see its tagged README for its behavior. Build/safety guidance: [AGENTS.md](AGENTS.md), [.env.example](.env.example).
 
@@ -22,21 +22,27 @@ Version 0.4.5 corrects HEVC keyframe flags for recorder streams whose continuati
 
 [Source and updated usage documentation for this candidate](https://github.com/pnntrn/cctv-tv/tree/v0.4.5-rc.1#readme) · [Review PR #1](https://github.com/pnntrn/cctv-tv/pull/1) (unmerged).
 
-## Viewing in development0.5.0
+## Viewing in development0.5.1
 
 - Substream only: grid, fullscreen and setup never request the saved mainstream URL. Recorder encoding/recording quality is unchanged.
 - Borderless layouts1/4/6/8/9/16. Six has one large2x2 cell and five small cells; video retains its aspect ratio. Fewer simultaneous cameras may be necessary on limited TV hardware.
-- D-pad selects a camera; OK opens fullscreen. Back returns to the CCTV grid and stays there when already home. Android Home keeps its system behavior.
-- Remote/pointer activity reveals the top bar; it hides after4s idle. A focused bar control stays visible. Up from the first camera row reaches the bar; Down returns to cameras.
-- Left icon cycles layout; long Left opens the layout picker. Right icon or long Right opens location selection. The location name is centered. Short Left/Right still navigate cameras, including pages.
-- In fullscreen, short OK focuses the toolbar without switching streams; Left/Right changes camera. Hold OK1s for the viewing menu. Settings requires a separate confirmation; Back never opens setup.
+- D-pad selects a camera; OK opens fullscreen. One short Back restores the location's configured default grid and keeps the selected visible camera/page when possible. A second distinct short Back within700ms opens Android TV Home. Held/repeated Back is ignored; other input, location changes and lifecycle changes reset the sequence. Dialogs and unsaved edits retain their cancel/confirmation guards.
+- Remote/pointer activity reveals the top bar; it hides after1500ms idle, returning toolbar focus to the camera or empty-content target first. Open dialogs/settings keep their navigation. Up from the first camera row reaches the bar; Down returns to cameras.
+- The top-right cluster has four48dp actions: layout, next location, next page and Settings. Text reads location, layout, then page. Location and next-page clicks wrap; next page exits fullscreen to the grid before advancing. Held Left/Right and long-click layout/location picker shortcuts remain available. Short Left/Right navigate cameras or toolbar actions.
+- In fullscreen, short OK focuses the toolbar without switching streams; Left/Right changes camera. Hold OK1s for the viewing menu. One Settings click opens technician confirmation with Cancel focused by default; Back never opens setup.
 - Hidden channels stay saved but do not play or appear in normal viewing. Offline channels are not automatically hidden.
 
 ### วิธีใช้งาน
 
-แอปใช้ภาพรองทุกมุมมอง กดลูกศรเพื่อเลือกกล้อง แล้วกด **OK** เพื่อดูเต็มจอ กด **ย้อนกลับ** เพื่อกลับตาราง เมนูและกรอบเลือกจะซ่อนเมื่อไม่กดรีโมต4วินาที
+แอปใช้ภาพรองทุกมุมมอง กดลูกศรเพื่อเลือกกล้อง แล้วกด **OK** เพื่อดูเต็มจอ กด **ย้อนกลับ** หนึ่งครั้งเพื่อคืนตารางเริ่มต้นของสถานที่ กดสั้นอีกครั้งภายใน700มิลลิวินาทีเพื่อไปหน้าแรก Android TV เมนูและกรอบเลือกจะซ่อนเมื่อไม่กดรีโมต1.5วินาที
 
-แถบบนมีไอคอนจำนวนกล้องด้านซ้าย ชื่อสถานที่ตรงกลาง และเปลี่ยนสถานที่ด้านขวา กดซ้ายค้างเพื่อเลือกรูปแบบตาราง หรือขวาค้างเพื่อเลือกสถานที่ มีตาราง6กล้องแบบภาพใหญ่1ภาพเล็ก5
+แถบบนแสดงชื่อสถานที่ รูปแบบตาราง และเลขหน้า ตามด้วยไอคอนด้านขวา: เปลี่ยนตาราง เปลี่ยนสถานที่ หน้าถัดไป และตั้งค่า กดไอคอนสถานที่เพื่อวนไปสถานที่ถัดไป กดตั้งค่าหนึ่งครั้งแล้วเลือกยืนยัน โดยค่าเริ่มต้นอยู่ที่ยกเลิก กดซ้ายค้างเพื่อเลือกรูปแบบตาราง หรือขวาค้างเพื่อเลือกสถานที่ มีตาราง6กล้องแบบภาพใหญ่1ภาพเล็ก5
+
+## Camera names and frame health
+
+Best-effort RTSP SDP media/session names appear only when meaningful and safe. Saved custom names always win; detected names replace only generated `Camera N` / `กล้อง N` display labels. URLs are never used to infer names. The app rejects URL/userinfo, control/bidi characters and generic names before publishing a Media3 label, and limits names to80Unicode code points. H.264/HEVC in-band discovery retains that label. Many recorders publish only generic SDP titles, so a useful camera name is not guaranteed; there is no ONVIF/API name lookup. Optional sanitized metadata is cached in the encrypted schema3 profile and invalidated when the SUB URL changes; no profile migration is required.
+
+Every playing tile keeps a small bottom-right badge when the toolbar hides. It reads actual rendered-output counters once per second: live with measured rendered FPS, no-new-frames after3000ms without an increase, connecting before output, or error after a playback failure. A still scene stays live while new frames render. This measures delivery to the video surface, not motion or whether the recorder is re-encoding an unchanged image. FPS is sampled, not the camera's advertised rate; low-rate streams can briefly show0FPS while still inside the3s grace period. There is no invented heartbeat or bandwidth value. Polling stops on background/release and does not create additional players. Physical TV/NVR behavior still requires device verification.
 
 ## Technician setup and channels
 

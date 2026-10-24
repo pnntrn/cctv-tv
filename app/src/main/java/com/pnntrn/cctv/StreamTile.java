@@ -31,6 +31,12 @@ public final class StreamTile extends FrameLayout {
     private final SurfaceView surface;
     private final TextView status;
     private final TextView title;
+    private final TextView health;
+    private final Camera camera;
+    private RenderedFrameHealth frameHealth = new RenderedFrameHealth();
+    private boolean healthPolling = true;
+    private Runnable nameListener;
+    private final Runnable healthPoll = () -> pollHealth(true);
     public interface Listener {
         void onFirstFrame();
         void onFailure(PlaybackFailure reason);
@@ -39,7 +45,16 @@ public final class StreamTile extends FrameLayout {
     private boolean autoRetry = true;
     public void setListener(Listener listener) { this.listener = listener; }
     public void setAutoRetry(boolean enabled) { autoRetry = enabled; }
+    public void setNameListener(Runnable listener) { nameListener = listener; }
+    public void setHealthPolling(boolean enabled) {
+        healthPolling = enabled; handler.removeCallbacks(healthPoll);
+        if (enabled && !released && player != null) pollHealth(true);
+    }
     public void setChromeVisible(boolean visible) { title.setVisibility(visible ? VISIBLE : GONE); }
+    public void setCaptionBottomInset(int pixels) {
+        LayoutParams caption = (LayoutParams)title.getLayoutParams();
+        if (caption.bottomMargin != pixels) { caption.bottomMargin = Math.max(0, pixels); title.setLayoutParams(caption); }
+    }
     private final String url;
     private final boolean tcp;
     private final boolean fullscreen;
@@ -47,12 +62,13 @@ public final class StreamTile extends FrameLayout {
     private boolean released;
     private int failures;
     private int generation;
-    private volatile long lastFrame;
+    private long connectedAt;
     private float aspect = 16f / 9f;
 
     /** The legacy main flag controls fullscreen sizing only; playback always uses SUB. */
     public StreamTile(Context context, Camera camera, boolean main, boolean tcp) {
         super(context);
+        this.camera = camera;
         this.fullscreen = main;
         this.tcp = tcp;
         this.url = camera.subUrl;
@@ -65,11 +81,16 @@ public final class StreamTile extends FrameLayout {
         LayoutParams state = new LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
         state.setMargins(dp(8), dp(8), dp(8), 0);
         addView(status, state);
-        title = label(context.getString(R.string.common_stream_sub, camera.name), main ? 18 : 13);
+        title = label(context.getString(R.string.common_stream_sub, camera.displayName()), main ? 18 : 13);
+        title.setPadding(dp(8), dp(5), dp(132), dp(5));
         title.setSingleLine(true); title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LayoutParams caption = new LayoutParams(-1, -2, Gravity.BOTTOM);
         addView(title, caption);
-        setContentDescription(context.getString(main ? R.string.common_stream_fullscreen_description : R.string.common_stream_grid_description, camera.name));
+        health = label(context.getString(R.string.common_connecting), 11);
+        health.setTag("frame-health"); health.setSingleLine(true);
+        health.setPadding(dp(5), dp(3), dp(5), dp(3));
+        addView(health, new LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.RIGHT));
+        updateCameraName();
     }
 
     /** Actual decoder format, queried after a rendered frame; never an encoder override. */
@@ -98,6 +119,9 @@ public final class StreamTile extends FrameLayout {
         releasePlayer();
         final int token = ++generation;
         status.setVisibility(VISIBLE); status.setText(R.string.common_connecting);
+        health.setText(R.string.common_connecting); health.setTextColor(0xFFE6EDF6);
+        frameHealth = new RenderedFrameHealth(); connectedAt = SystemClock.elapsedRealtime();
+        frameHealth.sample(connectedAt, 0);
         try {
             DefaultTrackSelector selector = new DefaultTrackSelector(getContext());
             selector.setParameters(selector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
@@ -111,14 +135,12 @@ public final class StreamTile extends FrameLayout {
                     .setTrackSelector(selector).setLoadControl(buffers).build();
             player.setVideoSurfaceView(surface);
             player.setVolume(0);
-            lastFrame = SystemClock.elapsedRealtime();
-            player.setVideoFrameMetadataListener((presentationTimeUs, releaseTimeNs, format, mediaFormat) ->
-                    lastFrame = SystemClock.elapsedRealtime());
             player.addListener(new Player.Listener() {
                 private boolean current() { return !released && token == generation; }
                 @Override public void onRenderedFirstFrame() {
                     if (!current()) return;
                     failures = 0; status.setVisibility(GONE);
+                    pollHealth(false);
                     logPlaybackStats("first-frame");
                     if (listener != null) listener.onFirstFrame();
                 }
@@ -142,6 +164,7 @@ public final class StreamTile extends FrameLayout {
                     .setTimeoutMs(8000).createMediaSource(MediaItem.fromUri(url)));
             player.prepare();
             player.play();
+            if (healthPolling) handler.postDelayed(healthPoll, 1000);
             handler.postDelayed(() -> watchdog(token), 5000);
         } catch (RuntimeException e) {
             // Never put exception text or authenticated RTSP URLs into UI/logs.
@@ -152,13 +175,14 @@ public final class StreamTile extends FrameLayout {
     private void watchdog(int token) {
         if (released || token != generation) return;
         logPlaybackStats("watchdog");
-        long frameTime = lastFrame;
+        long frameTime = frameHealth.lastFrameTime() < 0 ? connectedAt : frameHealth.lastFrameTime();
         if (SystemClock.elapsedRealtime() - frameTime > 25000) { fail(PlaybackFailure.TIMEOUT); return; }
         handler.postDelayed(() -> watchdog(token), 5000);
     }
 
     private void fail(PlaybackFailure reason) {
         if (released) return;
+        health.setText(R.string.tv_frames_error); health.setTextColor(0xFFFFCC86);
         if (listener != null) listener.onFailure(reason);
         if (released) return;
         if (autoRetry && reason.retry) { retry(UiText.playback(getContext(), reason)); return; }
@@ -178,7 +202,36 @@ public final class StreamTile extends FrameLayout {
     }
 
     private void releasePlayer() {
+        handler.removeCallbacks(healthPoll);
         if (player != null) { logPlaybackStats("release"); player.clearVideoSurface(); player.release(); player = null; }
+    }
+
+    private void updateCameraName() {
+        String display = camera.displayName();
+        title.setText(getContext().getString(R.string.common_stream_sub, display));
+        setContentDescription(getContext().getString(fullscreen ? R.string.common_stream_fullscreen_description : R.string.common_stream_grid_description, display));
+    }
+
+    /** Main-thread polling reads actual rendered counters, never pixel motion or a timer heartbeat. */
+    private void pollHealth(boolean scheduleNext) {
+        if (released || !healthPolling || player == null) return;
+        androidx.media3.exoplayer.DecoderCounters counters = player.getVideoDecoderCounters();
+        int rendered = 0;
+        if (counters != null) { counters.ensureUpdated(); rendered = counters.renderedOutputBufferCount; }
+        RenderedFrameHealth.State state = frameHealth.sample(SystemClock.elapsedRealtime(), rendered);
+        if (state == RenderedFrameHealth.State.LIVE) {
+            health.setText(getContext().getString(R.string.tv_frames_live, frameHealth.framesPerSecond()));
+            health.setTextColor(0xFF65DFCA);
+        } else if (state == RenderedFrameHealth.State.STALLED) {
+            health.setText(R.string.tv_frames_stalled); health.setTextColor(0xFFFFCC86);
+        } else {
+            health.setText(R.string.common_connecting); health.setTextColor(0xFFE6EDF6);
+        }
+        androidx.media3.common.Format format = player.getVideoFormat();
+        if (format != null && camera.setDetectedName(format.label)) {
+            updateCameraName(); if (nameListener != null) nameListener.run();
+        }
+        if (scheduleNext && !released && healthPolling) handler.postDelayed(healthPoll, 1000);
     }
 
     /** Opt-in ADB diagnostics: aggregate counters only, never names, URLs or credentials. */

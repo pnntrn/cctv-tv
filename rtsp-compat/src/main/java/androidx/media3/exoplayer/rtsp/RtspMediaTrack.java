@@ -170,9 +170,19 @@ import com.google.common.collect.ImmutableMap;
    */
   public RtspMediaTrack(
       RtspHeaders rtspHeaders, MediaDescription mediaDescription, Uri sessionUri) {
+    this(rtspHeaders, mediaDescription, sessionUri, null);
+  }
+
+  public RtspMediaTrack(
+      RtspHeaders rtspHeaders, MediaDescription mediaDescription, Uri sessionUri,
+      @Nullable String sessionName) {
     checkArgument(
         mediaDescription.attributes.containsKey(ATTR_CONTROL), "missing attribute control");
-    payloadFormat = generatePayloadFormat(mediaDescription);
+    RtpPayloadFormat generated = generatePayloadFormat(mediaDescription);
+    String name = SdpCameraName.sanitize(mediaDescription.mediaTitle);
+    if (name == null) name = SdpCameraName.sanitize(sessionName);
+    payloadFormat = new RtpPayloadFormat(generated.format.buildUpon().setLabel(name).build(),
+        generated.rtpPayloadType, generated.clockRate, generated.fmtpParameters, generated.mediaEncoding);
     uri =
         extractTrackUri(
             rtspHeaders, sessionUri, castNonNull(mediaDescription.attributes.get(ATTR_CONTROL)));

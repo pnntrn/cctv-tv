@@ -71,6 +71,7 @@ public final class ProfileStore {
                 Camera camera = new Camera(c.getString("id"), c.getString("name"), c.getString("sub"), c.getString("main"));
                 camera.deviceId = c.optString("deviceId", ""); camera.channel = c.optInt("channel", 0);
                 camera.hidden = c.optBoolean("hidden", false);
+                camera.setDetectedName(c.optString("detectedName", null));
                 loc.cameras.add(camera);
             }
             if (version == 1) Nvr.linkLegacy(loc);
@@ -98,7 +99,8 @@ public final class ProfileStore {
         for (Location loc : locations) {
             JSONArray cams = new JSONArray();
             for (Camera c : loc.cameras) cams.put(new JSONObject().put("id", c.id).put("name", c.name)
-                    .put("sub", c.subUrl).put("main", c.mainUrl).put("deviceId", c.deviceId).put("channel", c.channel).put("hidden", c.hidden));
+                    .put("sub", c.subUrl).put("main", c.mainUrl).put("deviceId", c.deviceId).put("channel", c.channel).put("hidden", c.hidden)
+                    .put("detectedName", c.detectedName()));
             JSONArray devices = new JSONArray();
             for (Nvr n : loc.devices) devices.put(nvrJson(n, true));
             array.put(new JSONObject().put("devices", devices).put("lastPage", loc.lastPage).put("lastCameraId", loc.lastCameraId).put("id", loc.id).put("name", loc.name).put("grid", loc.grid)

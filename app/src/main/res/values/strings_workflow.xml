@@ -1,6 +1,11 @@
 <resources>
     <string name="tv_layout_control">จำนวนกล้องในตาราง: %1$d • กดเพื่อเปลี่ยน • กดซ้ายค้างเพื่อเลือก</string>
     <string name="tv_location_control">เปลี่ยนสถานที่ • กดขวาค้างเพื่อเลือก</string>
+    <string name="tv_next_page">หน้าถัดไป</string>
+    <string name="tv_viewing_caption">%1$s • %2$s • หน้า %3$d/%4$d</string>
+    <string name="tv_frames_live">● สด · %1$.1f FPS</string>
+    <string name="tv_frames_stalled">ไม่มีเฟรมใหม่</string>
+    <string name="tv_frames_error">ขัดข้อง</string>
     <string name="tv_layout_option">%1$d กล้อง</string>
     <string name="tv_layout_six">6 กล้อง • ภาพใหญ่ 1 ภาพเล็ก 5</string>
     <string name="tv_default_grid">จำนวนกล้องในตารางเริ่มต้น</string>

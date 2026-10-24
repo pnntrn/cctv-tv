@@ -94,6 +94,66 @@ public final class InBandPlaybackTest {
     @Test public void requestedMainFlagStillDecodesH264Substream() throws Exception { play(true, true, false); }
     @Test public void requestedMainFlagStillDecodesHevcSubstream() throws Exception { play(true, true, true); }
     @Test public void requestedMainFlagIgnoresInvalidMainUri() throws Exception { play(false, true, false, false, true); }
+    @Test public void renderedStillH264FramesStayLiveThenDetectARealStall() throws Exception { frameHealthAndName(false); }
+    @Test public void renderedStillHevcFramesStayLiveThenDetectARealStall() throws Exception { frameHealthAndName(true); }
+    private void frameHealthAndName(boolean hevc) throws Exception {
+        var instrumentation=InstrumentationRegistry.getInstrumentation();
+        assertTrue(android.os.Build.HARDWARE.contains("ranchu")||android.os.Build.HARDWARE.contains("goldfish"));
+        assertTrue(new ProfileStore(instrumentation.getTargetContext()).load().isEmpty());
+        CountDownLatch frame=new CountDownLatch(1);AtomicReference<StreamTile> tile=new AtomicReference<>();
+        try(LoopbackRtspServer server=new LoopbackRtspServer(fixture(hevc),false,hevc);
+            ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+            server.sessionName="ลานจอดรถ";server.mediaName="ประตูโกดัง";server.stillPicture=true;
+            scenario.onActivity(activity->{try {
+                Location location=new Location("สถานที่สาธิตภาพรอง");
+                location.cameras.add(new Camera("Camera 1",server.url(),"invalid-unused-main"));
+                var current=MainActivity.class.getDeclaredField("current");current.setAccessible(true);current.set(activity,location);
+                var fullscreen=MainActivity.class.getDeclaredField("fullscreen");fullscreen.setAccessible(true);fullscreen.setInt(activity,0);
+                var render=MainActivity.class.getDeclaredMethod("render");render.setAccessible(true);render.invoke(activity);
+                StreamTile stream=(StreamTile)((ArrayList<?>)privateField(activity,"streams")).get(0);
+                tile.set(stream);stream.setAutoRetry(false);
+                stream.setListener(new StreamTile.Listener(){public void onFirstFrame(){frame.countDown();}public void onFailure(PlaybackFailure reason){fail("Synthetic playback failed: "+reason);}});
+            }catch(Exception e){throw new AssertionError(e);}});
+            assertTrue("Health proof requires a rendered picture",frame.await(20,TimeUnit.SECONDS));
+            awaitHealth(scenario,tile.get(),"FPS",5000);
+            if(!hevc){
+                scenario.onActivity(activity->{try {var reveal=MainActivity.class.getDeclaredMethod("revealChrome");reveal.setAccessible(true);reveal.invoke(activity);}catch(Exception e){throw new AssertionError(e);}});
+                assertTrue(androidx.test.uiautomator.UiDevice.getInstance(instrumentation).takeScreenshot(new java.io.File(instrumentation.getTargetContext().getFilesDir(),"ui-refined-fullscreen.png")));
+            }
+            android.os.SystemClock.sleep(3200); // The same image is deliberately re-encoded at new timestamps.
+            scenario.onActivity(activity->{try {
+                StreamTile stream=tile.get();android.widget.TextView health=stream.findViewWithTag("frame-health");
+                assertTrue("Still scenes with new rendered frames stay live",health.getText().toString().contains("FPS"));
+                assertEquals("ประตูโกดัง",((Camera)privateField(stream,"camera")).displayName());
+                assertTrue(((android.widget.TextView)privateField(stream,"title")).getText().toString().contains("ประตูโกดัง"));
+                stream.setChromeVisible(false);assertEquals(View.VISIBLE,health.getVisibility());
+            }catch(Exception e){throw new AssertionError(e);}});
+            if(!hevc)assertTrue(androidx.test.uiautomator.UiDevice.getInstance(instrumentation).takeScreenshot(new java.io.File(instrumentation.getTargetContext().getFilesDir(),"ui-frame-live.png")));
+            server.pauseFrames=true;
+            awaitHealth(scenario,tile.get(),"ไม่มีเฟรมใหม่",10000);
+            if(!hevc)assertTrue(androidx.test.uiautomator.UiDevice.getInstance(instrumentation).takeScreenshot(new java.io.File(instrumentation.getTargetContext().getFilesDir(),"ui-frame-stalled.png")));
+            server.pauseFrames=false;awaitHealth(scenario,tile.get(),"FPS",7000);
+            long[] sampled={0};
+            scenario.onActivity(activity->{try {
+                tile.get().setHealthPolling(false);sampled[0]=(Long)privateField(privateField(tile.get(),"frameHealth"),"sampledAt");
+            }catch(Exception e){throw new AssertionError(e);}});
+            android.os.SystemClock.sleep(1200);
+            scenario.onActivity(activity->{try {
+                assertEquals("Backgrounded health polling must stop",sampled[0],privateField(privateField(tile.get(),"frameHealth"),"sampledAt"));
+                tile.get().setHealthPolling(true);server.expectClientDisconnect=true;
+            }catch(Exception e){throw new AssertionError(e);}});
+            scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);
+            instrumentation.runOnMainSync(()->{try {assertNull("Background lifecycle must release the player",privateField(tile.get(),"player"));}catch(Exception e){throw new AssertionError(e);}});
+        } finally {instrumentation.runOnMainSync(()->{if(tile.get()!=null)tile.get().release();});}
+    }
+    private static void awaitHealth(ActivityScenario<MainActivity> scenario,StreamTile tile,String text,long timeout) {
+        long end=android.os.SystemClock.uptimeMillis()+timeout;String[] actual={""};
+        do {
+            scenario.onActivity(activity->actual[0]=((android.widget.TextView)tile.findViewWithTag("frame-health")).getText().toString());
+            if(actual[0].contains(text))return;android.os.SystemClock.sleep(100);
+        }while(android.os.SystemClock.uptimeMillis()<end);
+        fail("Expected rendered-frame health "+text+"; actual="+actual[0]);
+    }
     @Test public void failedSubstreamKeepsCredentialsOutOfUiAndLogs() throws Exception {
         var context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         assertTrue("Use a clean emulator fixture", new ProfileStore(context).load().isEmpty());
@@ -311,6 +371,9 @@ public final class InBandPlaybackTest {
                     StreamTile active = tile.get();
                     assertEquals(hevc ? "H.265 / HEVC" : "H.264", active.detectedVideoCodec());
                     assertNotNull("All viewing modes must use Media3", privateField(active, "player"));
+                    assertEquals("SDP name must survive out-of-band and in-band format publication", "Synthetic in-band H264",
+                            ((androidx.media3.exoplayer.ExoPlayer)privateField(active,"player")).getVideoFormat().label);
+                    assertEquals("Custom names always win", "Synthetic in-band fixture",((Camera)privateField(active,"camera")).displayName());
                 } catch (Exception e) { throw new AssertionError(e); } });
                 assertEquals("Saved MAIN must never be contacted", 0, unusedMain.acceptedConnections);
                 assertNull("Loopback server failed", server.failure.get());
@@ -442,6 +505,8 @@ public final class InBandPlaybackTest {
         private volatile boolean playing;
         private volatile boolean expectClientDisconnect;
         volatile boolean shiftedHevcFu;
+        volatile boolean pauseFrames,stillPicture;
+        volatile String sessionName="Synthetic in-band H264",mediaName;
         volatile int singleNalPackets;
         volatile int setupRequests,playRequests,acceptedConnections;
         private int videoChannel;
@@ -515,9 +580,10 @@ public final class InBandPlaybackTest {
                             break;
                         case "DESCRIBE":
                             String sdp = "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\n"
-                                    + "s=Synthetic in-band H264\r\nc=IN IP4 127.0.0.1\r\n"
+                                    + "s="+sessionName+"\r\nc=IN IP4 127.0.0.1\r\n"
                                     + "t=0 0\r\na=control:*\r\na=range:npt=0-\r\n"
                                     + "m=video 0 RTP/AVP 96\r\na=rtpmap:96 " + (hevc ? "H265" : "H264") + "/90000\r\n"
+                                    + (mediaName==null?"":"i="+mediaName+"\r\n")
                                     + "a=control:" + (streamPath.equals("/fixture/") ? "trackID=1" : trackUrl()) + "\r\n" + fmtp
                                     + (!unusedMedia.isEmpty() ? unusedMedia : hevc ? "m=audio 0 RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\na=control:trackID=2\r\n" : "");
                             respond(cseq, "Content-Type: application/sdp\r\nContent-Base: "
@@ -569,7 +635,7 @@ public final class InBandPlaybackTest {
         }
 
         private void respond(String cseq, String headers, String body) throws IOException {
-            byte[] bytes = body.getBytes(StandardCharsets.US_ASCII);
+            byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
             synchronized (outputLock) {
                 output.write(("RTSP/1.0 200 OK\r\nCSeq: " + cseq + "\r\n" + headers
                         + "Content-Length: " + bytes.length + "\r\n\r\n")
@@ -583,7 +649,9 @@ public final class InBandPlaybackTest {
             try {
                 // Repeat for buffering/slow emulator startup; timestamps and sequence stay monotonic.
                 while (playing && !closed) {
-                    for (List<byte[]> frame : frames) {
+                    for (List<byte[]> nextFrame : frames) {
+                        while(pauseFrames&&playing&&!closed)Thread.sleep(50);
+                        List<byte[]> frame=stillPicture?frames.get(0):nextFrame;
                         if (!playing || closed) return;
                         for (int i = 0; i < frame.size(); i++) {
                             byte[] nal = frame.get(i);

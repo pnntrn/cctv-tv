@@ -31,7 +31,7 @@ for test_class in InBandPlaybackTest RecorderDraftFlowTest TvFlowTest ViewingFlo
     exit "$test_status"
   fi
   # Save each class's captures before the next clean-install fixture reset removes them.
-  for name in grid fullscreen settings recorder updates idle viewing-menu technician-entry technician-empty mi-box-empty mi-box-menu mi-box-technician codec-sub six six-live; do
+  for name in grid fullscreen settings recorder updates idle viewing-menu technician-entry technician-empty mi-box-empty mi-box-menu mi-box-technician codec-sub six six-live refined-controls refined-fullscreen frame-live frame-stalled; do
     if adb shell run-as com.pnntrn.cctv ls "files/ui-$name.png" >/dev/null 2>&1; then
       adb exec-out run-as com.pnntrn.cctv cat "files/ui-$name.png" > "ui-results/$name.png"
     fi
@@ -47,7 +47,7 @@ for p in Path('ui-results').glob('*.png'):
         p.unlink()
     else:
         assert struct.unpack('>II',data[16:24]) == (1920,1080), 'Native UI screenshots must use physical TV geometry'
-required={'grid','fullscreen','settings','recorder','updates','idle','viewing-menu','technician-entry','technician-empty','mi-box-empty','mi-box-menu','mi-box-technician','codec-sub','six','six-live'}
+required={'grid','fullscreen','settings','recorder','updates','idle','viewing-menu','technician-entry','technician-empty','mi-box-empty','mi-box-menu','mi-box-technician','codec-sub','six','six-live','refined-controls','refined-fullscreen','frame-live','frame-stalled'}
 assert required <= {p.stem for p in Path('ui-results').glob('*.png')}, 'Required native screenshots are missing'
 output=Path('ui-results/instrumentation.txt').read_text()
 assert not re.search(r'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed', output), 'Android instrumentation failed or crashed'

@@ -61,6 +61,8 @@ public final class SubstreamWorkflowTest {
                 assertNotNull(a.getWindow().getDecorView().findViewWithTag("location-control"));
             }catch(Exception e){throw new AssertionError(e);}});
             InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+            assertTrue(androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).takeScreenshot(
+                    new java.io.File(InstrumentationRegistry.getInstrumentation().getTargetContext().getFilesDir(),"ui-refined-controls.png")));
             s.onActivity(a->{try {
                 var cells=(ArrayList<?>)get(a,"tileViews"); View big=(View)cells.get(0),small=(View)cells.get(1);
                 assertEquals(small.getWidth()*2,big.getWidth(),2);
@@ -101,6 +103,21 @@ public final class SubstreamWorkflowTest {
             }catch(Exception e){throw new AssertionError(e);}});
         }
     }
+    @Test public void fullscreenCaptionStaysAboveHelpWhileHealthKeepsBottomRight() throws Exception {
+        requireFixture();
+        try(var s=ActivityScenario.launch(MainActivity.class)) {
+            s.onActivity(a->{try {
+                fixture(a,4);((View)((ArrayList<?>)get(a,"tileViews")).get(0)).performClick();
+            }catch(Exception e){throw new AssertionError(e);}});
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+            s.onActivity(a->{try {
+                StreamTile tile=(StreamTile)get(a,"fullTile");View title=(View)get(tile,"title"),help=(View)get(a,"fullHelp"),health=tile.findViewWithTag("frame-health");
+                assertTrue("Fullscreen camera name must stay above the help row",title.getBottom()<=help.getTop());
+                assertEquals("Health remains pinned to the tile bottom",tile.getHeight(),health.getBottom());
+                assertEquals("Health remains pinned to the tile right",tile.getWidth(),health.getRight());stopUiFixturePlayers(a);
+            }catch(Exception e){throw new AssertionError(e);}});
+        }
+    }
     @Test public void combinedNvrEditorShowsLocationAndDefaultGridAndRejectsSecondRecorder() throws Exception {
         requireFixture();
         try(var s=ActivityScenario.launch(MainActivity.class)){
@@ -121,15 +138,17 @@ public final class SubstreamWorkflowTest {
         do{s.onActivity(a->focus[0]=a.hasWindowFocus());if(focus[0])return;android.os.SystemClock.sleep(25);}while(android.os.SystemClock.uptimeMillis()<end);
         fail("Activity did not regain remote focus");
     }
-    @Test public void focusedToolbarStaysVisibleAndDirectionalHoldsConsumeRelease() throws Exception {
+    @Test public void focusedToolbarReturnsToContentAtIdleAndDirectionalHoldsConsumeRelease() throws Exception {
         requireFixture();
         try(var s=ActivityScenario.launch(MainActivity.class)){
             s.onActivity(a->{try{fixture(a,6);((ArrayList<Location>)get(a,"locations")).add((Location)get(a,"current"));
             }catch(Exception e){throw new AssertionError(e);}});
             awaitFocus(s);remoteKey(android.view.KeyEvent.KEYCODE_DPAD_UP);
             s.onActivity(a->{try{assertTrue("Real remote Up must focus the layout control before the idle check",((View)get(a,"layoutControl")).hasFocus());}catch(Exception e){throw new AssertionError(e);}});
-            android.os.SystemClock.sleep(4300);
-            s.onActivity(a->{try{assertTrue((Boolean)get(a,"chromeVisible"));assertEquals(View.VISIBLE,((View)get(a,"viewingBar")).getVisibility());}catch(Exception e){throw new AssertionError(e);}});
+            android.os.SystemClock.sleep(1900);
+            s.onActivity(a->{try{assertFalse((Boolean)get(a,"chromeVisible"));assertEquals(View.GONE,((View)get(a,"viewingBar")).getVisibility());
+                assertTrue("Idle must restore the content focus before hiding controls",((View)((ArrayList<?>)get(a,"tileViews")).get(0)).hasFocus());
+            }catch(Exception e){throw new AssertionError(e);}});
             for(int key:new int[]{android.view.KeyEvent.KEYCODE_DPAD_LEFT,android.view.KeyEvent.KEYCODE_DPAD_RIGHT}){
                 awaitFocus(s);long down=android.os.SystemClock.uptimeMillis();
                 s.onActivity(a->a.dispatchKeyEvent(new android.view.KeyEvent(down,down,android.view.KeyEvent.ACTION_DOWN,key,0)));
@@ -141,6 +160,76 @@ public final class SubstreamWorkflowTest {
                     assertEquals(-1,get(a,"fullscreen"));assertFalse((Boolean)get(a,"managing"));showing.dismiss();
                 }catch(Exception e){throw new AssertionError(e);}});
             }
+        }
+    }
+    @Test public void toolbarClustersActionsCyclesLocationsAndPagesAndOpensSafeSettings() throws Exception {
+        requireFixture();
+        try(var s=ActivityScenario.launch(MainActivity.class)) {
+            s.onActivity(a->{try {
+                fixture(a,4);Location first=(Location)get(a,"current"),second=new Location("อีกสถานที่");
+                ((ArrayList<Location>)get(a,"locations")).add(first);((ArrayList<Location>)get(a,"locations")).add(second);
+            }catch(Exception e){throw new AssertionError(e);}});
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+            s.onActivity(a->{try {
+                Location first=((ArrayList<Location>)get(a,"locations")).get(0),second=((ArrayList<Location>)get(a,"locations")).get(1);
+                View bar=(View)get(a,"viewingBar");
+                View layout=bar.findViewWithTag("layout-control"),location=bar.findViewWithTag("location-control"),next=bar.findViewWithTag("next-page-control"),settings=bar.findViewWithTag("settings-control");
+                assertNotNull("Next page must be a direct TV control",next);assertNotNull("Settings must be a direct TV control",settings);
+                assertEquals("หน้าถัดไป",next.getContentDescription().toString());
+                for(View control:new View[]{layout,location,next,settings}){assertTrue(control.getWidth()>=Math.round(48*a.getResources().getDisplayMetrics().density));assertFalse(control.getContentDescription().toString().isEmpty());}
+                assertTrue("All controls must cluster after the toolbar text",layout.getLeft()>bar.findViewWithTag("location-title").getLeft());
+                assertTrue(layout.getLeft()<location.getLeft());assertTrue(location.getLeft()<next.getLeft());assertTrue(next.getLeft()<settings.getLeft());
+                String caption=((android.widget.TextView)bar.findViewWithTag("location-title")).getText().toString();
+                assertTrue(caption.indexOf("สถานที่ทดสอบ")<caption.indexOf("4 กล้อง"));assertTrue(caption.indexOf("4 กล้อง")<caption.indexOf("หน้า 1/2"));
+                next.performClick();assertEquals(1,get(a,"page"));
+                a.getWindow().getDecorView().findViewWithTag("next-page-control").performClick();assertEquals(0,get(a,"page"));
+                ((View)((ArrayList<?>)get(a,"tileViews")).get(0)).performClick();assertEquals(0,get(a,"fullscreen"));
+                a.getWindow().getDecorView().findViewWithTag("next-page-control").performClick();assertEquals(-1,get(a,"fullscreen"));assertEquals(1,get(a,"page"));
+                a.getWindow().getDecorView().findViewWithTag("location-control").performClick();assertSame(second,get(a,"current"));
+                a.getWindow().getDecorView().findViewWithTag("next-page-control").performClick();assertEquals(0,get(a,"page"));
+                assertTrue("Empty pages keep a safe focus target",((View)get(a,"nextPageControl")).hasFocus());
+                a.getWindow().getDecorView().findViewWithTag("location-control").performClick();assertSame(first,get(a,"current"));
+                a.getWindow().getDecorView().findViewWithTag("settings-control").performClick();
+                AlertDialog confirmation=(AlertDialog)get(a,"technicianConfirmation");assertTrue(confirmation.isShowing());
+                assertTrue("Cancel must retain default focus",confirmation.getButton(AlertDialog.BUTTON_NEGATIVE).hasFocus());
+                confirmation.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();assertFalse((Boolean)get(a,"technician"));stopUiFixturePlayers(a);
+            }catch(Exception e){throw new AssertionError(e);}});
+        }
+    }
+    @Test public void backRestoresDefaultGridAndIdentityBeforeSecondShortBackOpensAndroidHome() throws Exception {
+        requireFixture();
+        try(var s=ActivityScenario.launch(MainActivity.class)) {
+            s.onActivity(a->{try {
+                fixture(a,4);Location l=(Location)get(a,"current");l.defaultGrid=6;l.cameras.get(1).hidden=true;
+                ((ArrayList<Location>)get(a,"locations")).add(l);
+                var selected=MainActivity.class.getDeclaredField("focusedCamera");selected.setAccessible(true);selected.setInt(a,6);
+                var page=MainActivity.class.getDeclaredField("page");page.setAccessible(true);page.setInt(a,1);call(a,"render");
+                ((View)((ArrayList<?>)get(a,"tileViews")).get(2)).performClick();
+            }catch(Exception e){throw new AssertionError(e);}});
+            awaitFocus(s);remoteKey(android.view.KeyEvent.KEYCODE_BACK);
+            s.onActivity(a->{try {assertEquals(-1,get(a,"fullscreen"));assertEquals(6,((Location)get(a,"current")).grid);assertEquals(6,get(a,"focusedCamera"));assertEquals(1,get(a,"page"));stopUiFixturePlayers(a);}catch(Exception e){throw new AssertionError(e);}});
+            remoteKey(android.view.KeyEvent.KEYCODE_BACK);awaitLifecycle(s,androidx.lifecycle.Lifecycle.State.CREATED);
+        }
+    }
+    @Test public void heldBackAndDialogDismissCannotArmHomeAndOtherInputResetsIt() throws Exception {
+        requireFixture();
+        try(var s=ActivityScenario.launch(MainActivity.class)) {
+            s.onActivity(a->{try {
+                fixture(a,4);Location l=(Location)get(a,"current");l.defaultGrid=6;((ArrayList<Location>)get(a,"locations")).add(l);
+                long now=android.os.SystemClock.uptimeMillis();
+                a.dispatchKeyEvent(new android.view.KeyEvent(now,now,android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_BACK,0));
+                a.dispatchKeyEvent(new android.view.KeyEvent(now,now+20,android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_BACK,1));
+                a.dispatchKeyEvent(new android.view.KeyEvent(now,now+30,android.view.KeyEvent.ACTION_UP,android.view.KeyEvent.KEYCODE_BACK,0));
+                assertEquals("Held/repeated Back must not navigate",4,l.grid);
+                a.getWindow().getDecorView().findViewWithTag("settings-control").performClick();
+            }catch(Exception e){throw new AssertionError(e);}});
+            android.os.SystemClock.sleep(1700);
+            s.onActivity(a->{try {assertTrue("Idle must preserve the open confirmation",((AlertDialog)get(a,"technicianConfirmation")).isShowing());}catch(Exception e){throw new AssertionError(e);}});
+            remoteKey(android.view.KeyEvent.KEYCODE_BACK);awaitFocus(s);remoteKey(android.view.KeyEvent.KEYCODE_BACK);
+            s.onActivity(a->{try {assertEquals(6,((Location)get(a,"current")).grid);assertFalse(a.isFinishing());stopUiFixturePlayers(a);}catch(Exception e){throw new AssertionError(e);}});
+            assertEquals("Dismissing settings must not arm Home",androidx.lifecycle.Lifecycle.State.RESUMED,s.getState());
+            remoteKey(android.view.KeyEvent.KEYCODE_DPAD_UP);remoteKey(android.view.KeyEvent.KEYCODE_BACK);
+            assertEquals("Other remote input resets the double-Back window",androidx.lifecycle.Lifecycle.State.RESUMED,s.getState());
         }
     }
     private static void remoteKey(int key) {

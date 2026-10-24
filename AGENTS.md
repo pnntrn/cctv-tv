@@ -4,7 +4,9 @@
 
 - Native Android TV/Google TV app in Java17, minAPI26, compile/target35. App ID is `com.pnntrn.cctv`.
 - `app/` owns TV viewing, guarded technician CRUD, encrypted profiles, phone setup and updater. `rtsp-compat/` vendors pinned Media3 RTSP1.8.0 with documented local parser fixes; preserve its Apache notices.
-- Development0.5.0 uses Media3 SUB only in grid/fullscreen/technician preview. Saved MAIN URLs are data only. No VLC runtime or native libraries are bundled. First-frame proof must come from actual rendered frames.
+- Development0.5.1 uses Media3 SUB only in grid/fullscreen/technician preview. Saved MAIN URLs are data only. No VLC runtime or native libraries are bundled. First-frame proof must come from actual rendered frames.
+- Viewing chrome hides after1500ms, including focused toolbar controls after returning focus to content. One short Back restores the location default grid; a second distinct short Back within700ms opens Android Home. Reset the sequence on other input/dialog/location/lifecycle changes; retain draft guards.
+- Sanitize SDP names before Format labels/logs. Custom names win; optional detected metadata remains schema3 and is invalidated on SUB URL changes. Per-tile health uses rendered decoder counters at1s intervals with3000ms no-new-frame state; no timer heartbeat or unmeasured bandwidth.
 - Only visible streams may run; release grid decoders for fullscreen, setup and background. Preserve generation guards, independent SUB/MAIN test results and decoded-SUB save requirement.
 - Layouts1/4/6/8/9/16 share GridLayoutSpec geometry; six is one2x2 large plus five small. Hidden channels are filtered only in viewing; technician changes are staged until Save. One NVR per location; schema3 migration preserves IDs/credentials and splits legacy multi-NVR locations. Do not claim untested physical decoder capacity.
 

@@ -68,7 +68,8 @@ final class InBandH264Reader implements RtpPayloadReader {
         }
         if (discovered.format == null) return;
 
-        RtpPayloadFormat initialized = new RtpPayloadFormat(discovered.format,
+        RtpPayloadFormat initialized = new RtpPayloadFormat(discovered.format.buildUpon()
+                .setLabel(payloadFormat.format.label).build(),
                 payloadFormat.rtpPayloadType, payloadFormat.clockRate,
                 payloadFormat.fmtpParameters, payloadFormat.mediaEncoding);
         ready = new RtpH264Reader(initialized);
