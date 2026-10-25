@@ -27,6 +27,18 @@ public class CameraNameTest {
         assertEquals("Video Media East Gate", label("Video Media East Gate", null));
         assertEquals("Audio Media Loading Bay", label("Warehouse East", "Audio Media Loading Bay"));
     }
+    @Test public void genericServerSessionFallbackNeverBecomesACameraName() throws Exception {
+        for (String server : new String[]{"HIK Media Server V4.82.006", "HIKMediaServerV4.82.006",
+                "hik-media-server-v4.82.006", "HIK_MEDIA_SERVER_V4.82.006", "Hik Media Server Version 4.82.006",
+                "MediaServer", "ACME RTSP Server 1.2.3", "AcmeRTSPServerV1.2.3", "acme_rtsp_server_ver_1.2.3",
+                "Vendor Streaming Server v3.0.20", "Vendor-Streaming-Server-3.0.20", "RTP Server v1.0",
+                "LIVE555 Streaming Media v2025.01.31", "HIK Media Server V4.82.006 Build 20250101"})
+            assertNull("Software session title must not replace a camera name: " + server, label(server, "Video Media"));
+        assertEquals("Server Room", label("Server Room", "Video Media"));
+        assertEquals("Media Server Room", label("Media Server Room", null));
+        assertEquals("HIK East Gate", label("HIK East Gate", null));
+        assertEquals("Server Room", label("HIK Media Server V4.82.006", "Server Room"));
+    }
     @Test public void sanitizerBoundsByCodePointsWithoutSplittingSurrogatePairs() {
         String input = "🚪".repeat(90);
         String sanitized = SdpCameraName.sanitize(input);

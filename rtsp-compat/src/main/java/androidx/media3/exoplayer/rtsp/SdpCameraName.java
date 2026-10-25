@@ -15,14 +15,18 @@ public final class SdpCameraName {
         }
         String value = name.trim();
         String lower = value.toLowerCase(java.util.Locale.ROOT);
+        String identifier = lower.replaceAll("[ _-]+", "");
         if (value.isEmpty() || value.indexOf('@') >= 0 || value.indexOf('/') >= 0
                 || value.indexOf('\\') >= 0 || value.indexOf(':') >= 0
                 || lower.contains("%40") || lower.contains("%3a") || lower.contains("%2f")
                 || lower.matches("[-_ .?]+")
                 || lower.matches("(?:video|audio)[ _-]*media")
+                // Vendor/software server titles, with optional version/build suffixes, are not locations.
+                || identifier.matches(".*(?:(?:media|rtsp|rtp|streaming)server|streamingmedia)"
+                        + "(?:(?:v(?:ersion)?|ver)?\\d+(?:\\.\\d+)*(?:[a-z]\\d*)?(?:build\\d+)?)?")
                 || lower.matches("(?:rtsp|rtp|video|audio|camera|ip camera|network camera|live|stream|session|h264|h265|hevc|avc|default|unnamed|none|n/a)(?:[ _-]*(?:session|stream|video|camera|\\d+))*")
-                || lower.startsWith("session streamed by") || lower.equals("media server")
-                || lower.matches("(?:vigi camera|hik media server|streaming session|live555 streaming media|media presentation|dvr|nvr)")) return null;
+                || lower.startsWith("session streamed by")
+                || lower.matches("(?:vigi camera|streaming session|media presentation|dvr|nvr)")) return null;
         int count = value.codePointCount(0, value.length());
         return count > 80 ? value.substring(0, value.offsetByCodePoints(0, 80)) : value;
     }

@@ -1,6 +1,6 @@
 # Releasing CCTV
 
-CCTV0.5.1 (version code1017) is unreleased. The repository is `pnntrn/cctv-tv`; the app is **CCTV**, package `com.pnntrn.cctv`. Retain the package and signing key. This upgrade reads profile schemas1/2 and writes3; consult the rollback requirements below before testing an older build.
+CCTV0.5.1 (version code1018) is unreleased. The repository is `pnntrn/cctv-tv`; the app is **CCTV**, package `com.pnntrn.cctv`. Retain the package and signing key. This upgrade reads profile schemas1/2 and writes3; consult the rollback requirements below before testing an older build.
 
 ## Before tagging
 
@@ -23,7 +23,7 @@ aapt dump badging cctv-release.apk
 apksigner verify --verbose --print-certs cctv-release.apk
 ```
 
-Confirm package `com.pnntrn.cctv`, version name `0.5.1`, version code `1017`, minimum SDK `26`, and retained certificate SHA-256:
+Confirm package `com.pnntrn.cctv`, version name `0.5.1`, version code `1018`, minimum SDK `26`, and retained certificate SHA-256:
 
 ```text
 4bb96b0ff9021cc49885f9cdd02d62ec3e58c3704cd65853e8dc2269316c5f9b

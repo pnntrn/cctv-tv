@@ -40,8 +40,8 @@ public class CameraMetadataTest {
         stored.remove("detectedName");assertEquals("Camera 1",ProfileStore.fromJson(json).get(0).cameras.get(0).displayName());
     }
     @Test public void profileLoadDiscardsGenericMediaCacheAndPreservesSavedCustomNames() throws Exception {
-        for(String savedName:new String[]{"Camera 3","Gatehouse custom","Video Media"}) {
-            for(String generic:new String[]{"Video Media","VideoMedia","Audio Media","AudioMedia"}) {
+        for(String savedName:new String[]{"Camera 3","Gatehouse custom","Video Media","Server Room","HIK Media Server V4.82.006"}) {
+            for(String generic:new String[]{"Video Media","VideoMedia","Audio Media","AudioMedia","HIK Media Server V4.82.006","HIKMediaServerV4.82.006"}) {
                 Location location=new Location("L");
                 location.cameras.add(new Camera("camera-3",savedName,"rtsp://example/sub","rtsp://example/main"));
                 JSONObject json=ProfileStore.toJson(List.of(location));
