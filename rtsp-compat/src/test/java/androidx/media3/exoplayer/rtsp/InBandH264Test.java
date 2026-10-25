@@ -16,7 +16,7 @@ import static org.junit.Assert.*;
 public class InBandH264Test {
  private RtpPayloadFormat payload(String fmtp) {
   MediaDescription.Builder b=new MediaDescription.Builder("video",0,"RTP/AVP",96)
-    .addAttribute("rtpmap","96 H264/90000").addAttribute("control","trackID=1");
+    .setMediaTitle("ประตูโกดัง").addAttribute("rtpmap","96 H264/90000").addAttribute("control","trackID=1");
   if(fmtp!=null)b.addAttribute("fmtp",fmtp);
   return new RtspMediaTrack(new RtspHeaders.Builder().build(),b.build(),Uri.parse("rtsp://127.0.0.1/test/")).payloadFormat;
  }
@@ -60,6 +60,7 @@ public class InBandH264Test {
    if((nal[0]&31)==5 ||(nal[0]&31)==1)time+=18000;
   }
   assertNotNull(output.format);assertEquals(320,output.format.width);assertEquals(180,output.format.height);
+  assertEquals("In-band discovery must retain sanitized SDP labels", "ประตูโกดัง", output.format.label);
   assertEquals(2,output.format.initializationData.size());assertTrue(output.samples>0);assertTrue(output.keyFrames>0);
  }
  static final class Collector implements ExtractorOutput,TrackOutput {

@@ -51,7 +51,7 @@ public final class CameraRules {
         }
     }
 
-    public static int checkedGrid(int size) { return size == 1 || size == 4 || size == 9 || size == 16 ? size : 4; }
+    public static int checkedGrid(int size) { return size == 1 || size == 4 || size == 6 || size == 8 || size == 9 || size == 16 ? size : 4; }
     public static int pageCount(int cameraCount, int size) { return Math.max(1, (cameraCount + size - 1) / size); }
     public static int clampPage(int page, int count, int size) { return Math.max(0, Math.min(page, pageCount(count, size) - 1)); }
 

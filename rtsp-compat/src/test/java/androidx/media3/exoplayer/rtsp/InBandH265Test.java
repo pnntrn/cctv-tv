@@ -21,7 +21,7 @@ import static org.junit.Assert.*;
 public class InBandH265Test {
     private RtpPayloadFormat payload() {
         MediaDescription media = new MediaDescription.Builder("video", 0, "RTP/AVP", 96)
-                .addAttribute("rtpmap", "96 H265/90000").addAttribute("control", "trackID=1").build();
+                .setMediaTitle("ลานจอดรถ").addAttribute("rtpmap", "96 H265/90000").addAttribute("control", "trackID=1").build();
         return new RtspMediaTrack(new RtspHeaders.Builder().build(), media, Uri.parse("rtsp://127.0.0.1/test/")).payloadFormat;
     }
     @Test public void absentFmtpDiscoversRealVpsSpsPpsBeforePublishingFormat() throws Exception { discover(false); }
@@ -57,6 +57,7 @@ public class InBandH265Test {
             }
         }
         assertNotNull("Real in-band HEVC parameter sets must initialize the stream", output.format);
+        assertEquals("In-band discovery must retain sanitized SDP labels", "ลานจอดรถ", output.format.label);
         assertEquals(320, output.format.width); assertEquals(180, output.format.height);
         assertFalse(output.format.initializationData.isEmpty());
         assertTrue(output.samples > 0);

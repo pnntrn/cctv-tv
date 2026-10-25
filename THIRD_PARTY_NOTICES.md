@@ -14,11 +14,8 @@ The recorded source JAR SHA-256 is `a8cf8fed25cc02ba3d385c9e262718d742c10a177ea9
 
 Dependency coordinates are declared in [app/build.gradle](app/build.gradle) and [rtsp-compat/build.gradle](rtsp-compat/build.gradle). This document does not replace upstream licenses or assert an audited license inventory for every transitive dependency; review the exact resolved artifacts and their notices before redistribution.
 
-The owner approved GPLv3 or later for original CCTV code. The Apache2.0 license retained for vendored Media3 code and the licenses of LibVLC/native components remain in effect for those components. See LICENSE for original project terms.
+The owner approved GPLv3 or later for original CCTV code. Vendored Media3 remains under its Apache2.0 notices. See LICENSE for original project terms.
 
+## Historical LibVLC experiment
 
-## Development0.4.6 LibVLC evaluation
-
-The owner approved `org.videolan.android:libvlc-all:3.7.2` for MAIN playback. Its publisher POM declares LGPL2.1; source/build inspection additionally identifies GPL-enabled contrib settings. [The pinned source index](third_party/libvlc/SOURCE-INDEX.md) records exact available source revisions, the artifact hash and remaining native inventory checks. [LGPL2.1](third_party/libvlc/LGPL-2.1.txt), [GPL2](third_party/libvlc/GPL-2.0.txt) and this evaluation source notice are bundled inside the APK.
-
-This development APK is for private device evaluation. Do not publish0.4.6 until component source/license/relink materials are complete and the owner explicitly approves the release. The owner has separately approved GPLv3 or later for original CCTV code.
+Private0.4.6 experiments used LibVLC3.7.2 for MAIN. Development0.5.0 removes that dependency, adapter and native libraries, and does not bundle the old SDK notices as if it still shipped the SDK. The [source index](third_party/libvlc/SOURCE-INDEX.md) and upstream license texts remain historical evidence for those earlier private artifacts. They are not an inventory of0.5.0 dependencies. No0.4.6 public release was authorized.

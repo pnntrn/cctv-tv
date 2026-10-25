@@ -365,7 +365,8 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
       // Includes tracks with supported formats only.
       if ("video".equals(mediaDescription.mediaType) && RtpPayloadFormat.isFormatSupported(mediaDescription)) {
         trackListBuilder.add(
-            new RtspMediaTrack(rtspDescribeResponse.headers, mediaDescription, uri));
+            new RtspMediaTrack(rtspDescribeResponse.headers, mediaDescription, uri,
+                rtspDescribeResponse.sessionDescription.sessionName));
       }
     }
     return trackListBuilder.build();

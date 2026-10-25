@@ -43,7 +43,9 @@ public class PhoneSetupServerTest {
                 assertTrue(request(phone,"POST","/api/save","{}",cookie,phone.address()).startsWith("HTTP/1.1 400"));
                 String tested=request(phone,"POST","/api/test","{}",cookie,phone.address());
                 JSONObject response=new JSONObject(tested.split("\r\n\r\n",2)[1]);assertTrue(response.getBoolean("okay"));
-                assertTrue(request(phone,"POST","/api/save",new JSONObject().put("proof",response.getString("proof")).toString(),cookie,phone.address()).startsWith("HTTP/1.1 200"));
+                String savedResponse=request(phone,"POST","/api/save",new JSONObject().put("proof",response.getString("proof")).toString(),cookie,phone.address());
+                assertTrue(savedResponse.startsWith("HTTP/1.1 200"));
+                assertTrue("Preserve handler confirmation; it may require approval on the TV",savedResponse.contains("Saved"));
                 assertEquals(1,saves.get());
                 assertTrue(request(phone,"POST","/api/save",new JSONObject().put("proof",response.getString("proof")).toString(),cookie,phone.address()).startsWith("HTTP/1.1 400"));
                 phone.close();assertFalse(phone.isActive());

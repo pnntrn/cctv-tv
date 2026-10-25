@@ -11,6 +11,7 @@ fi
 "${compiler[@]}" -encoding UTF-8 -d "$test_classes_dir" \
   app/src/main/java/com/pnntrn/cctv/CameraRules.java \
   app/src/main/java/com/pnntrn/cctv/Camera.java \
+  rtsp-compat/src/main/java/androidx/media3/exoplayer/rtsp/SdpCameraName.java \
   app/src/main/java/com/pnntrn/cctv/Location.java \
   app/src/main/java/com/pnntrn/cctv/Nvr.java \
   app/src/main/java/com/pnntrn/cctv/PlaybackFailure.java \

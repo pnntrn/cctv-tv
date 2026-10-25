@@ -45,13 +45,13 @@ public final class CoreChecks {
         rejects(() -> validateUrl("rtsp://u:p@host/path#password"));
         rejects(() -> validateUrl("rtsp://u:p@ss@host/path"));
         validateUrl("rtsp://u:p%40ss@host:554/live/1/2/avm?transport=unicast"); checks++;
-        for (int grid : new int[]{1, 4, 9, 16}) {
+        for (int grid : new int[]{1, 4, 6, 8, 9, 16}) {
             equal(grid, checkedGrid(grid));
             equal(1, pageCount(0, grid));
             equal(2, pageCount(grid + 1, grid));
             equal(0, clampPage(-1, 24, grid));
         }
-        equal(4, checkedGrid(8));
+        equal(4, checkedGrid(7));
         equal(1, clampPage(9, 24, 16));
         ArrayList<String> cams = new ArrayList<>(Arrays.asList("a", "b", "c", "d"));
         equal(3, move(cams, 0, 3)); equal(Arrays.asList("b", "c", "d", "a"), cams);

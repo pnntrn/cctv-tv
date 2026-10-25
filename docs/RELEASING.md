@@ -1,10 +1,10 @@
 # Releasing CCTV
 
-CCTV 0.4.4 (version code 1012) is a candidate for physical-device verification. The repository name is `pnntrn/cctv-tv`; the Android app remains **CCTV**, package `com.pnntrn.cctv`. Do not change the package, retained certificate or profile format as part of a routine release.
+CCTV0.5.1 (version code1018) is unreleased. The repository is `pnntrn/cctv-tv`; the app is **CCTV**, package `com.pnntrn.cctv`. Retain the package and signing key. This upgrade reads profile schemas1/2 and writes3; consult the rollback requirements below before testing an older build.
 
 ## Before tagging
 
-1. Review the changelog and version in `app/build.gradle`. Increase the version code. A candidate tag such as `v0.4.5-rc.1` must agree with APK version `0.4.4`; the suffix identifies the release candidate.
+1. Review the changelog and version in `app/build.gradle`. Increase the version code. An explicitly approved candidate tag such as `v0.5.1-rc.1` must agree with APK version `0.5.1`; the suffix identifies the candidate. Preparing or testing an APK does not authorize creating that tag.
 2. Run the commands in [CONTRIBUTING.md](../CONTRIBUTING.md), including Python release-verifier tests. Require the build and native TV CI jobs to pass for the source being released. Inspect native screenshots. Do not convert historical emulator results into physical-device claims.
 3. Confirm the retained `CCTV_SIGNING_BUNDLE` repository Actions secret is configured. It contains JSON fields `keystore` (base64 PKCS12), `password` and `alias`. Signing files are private, never source or release assets. `scripts/configure-signing.sh` is initial bootstrap tooling; do not generate a replacement key for existing installations.
 4. Keep `rtsp-compat/LICENSE`, source notices and [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md). Resolve the project's own licensing status before claiming a project license or redistribution permission.
@@ -13,7 +13,7 @@ CCTV 0.4.4 (version code 1012) is a candidate for physical-device verification. 
 
 Push the reviewed candidate tag only when ready to publish. The tag workflow publishes after both build and native TV checks pass. It uses `scripts/prepare-release.py` to reject unsigned APKs, wrong package/certificate and mismatched version/tag inputs before preparing release assets. Consult `python3 scripts/prepare-release.py --help` for its exact local interface. Pull requests without signing credentials must still build and test; unsigned outputs must never be published as installable releases.
 
-The installable asset is `cctv-release.apk`, accompanied by `SHA256SUMS` and the applicable license/notices. Mark `v0.4.5-rc.1` as a prerelease. Release notes must retain the outstanding Hikvision/Mi Box, 11-channel, decoder-capacity and in-place update/profile checks. Keep the review PR unmerged until its review is complete.
+The installable asset is `cctv-release.apk`, accompanied by `SHA256SUMS` and the applicable license/notices. An approved `v0.5.1-rc.1` tag should be a prerelease. Release notes must accurately distinguish synthetic decoder checks from physical Mi Box capacity and in-place update/profile checks. Keep the review PR unmerged until its review is complete and merge is explicitly approved.
 
 After publication, download the APK and checksums anonymously from [Releases](https://github.com/pnntrn/cctv-tv/releases). Check the SHA-256 and inspect it using Android SDK tools:
 
@@ -23,7 +23,7 @@ aapt dump badging cctv-release.apk
 apksigner verify --verbose --print-certs cctv-release.apk
 ```
 
-Confirm package `com.pnntrn.cctv`, version name `0.4.4`, version code `1012`, minimum SDK `26`, and retained certificate SHA-256:
+Confirm package `com.pnntrn.cctv`, version name `0.5.1`, version code `1018`, minimum SDK `26`, and retained certificate SHA-256:
 
 ```text
 4bb96b0ff9021cc49885f9cdd02d62ec3e58c3704cd65853e8dc2269316c5f9b
@@ -50,8 +50,8 @@ It publishes the APK, release notes and feed with downloads pinned to an immutab
 
 ## Private device evaluation and rollback
 
-The0.4.6 MAIN-engine investigation is not authorized for public tagging/publication yet. A retained-key evaluation APK can be produced with the existing workflow using `workflow_dispatch` and `build_only=true`. This skips duplicate native execution only for that private artifact; the PR and every release tag still require the native TV gate. Run the PR gate on the same source tree and record the device results. Never mark evaluation as a published release.
+The0.4.6 MAIN experiment was private. Development0.5.1 is SUB-only and has no public tag/release approval. A retained-key evaluation APK can be produced with `workflow_dispatch` and `build_only=true`. This skips duplicate native execution only for that private artifact; the PR and every release tag still require the native TV gate on the same source. Never mark evaluation as a published release.
 
-The ARM32/64 package compresses native libraries and must stay below64MiB for older installed updater versions. Debug retains x86/x86_64 for emulator tests; an ARM APK is not an Intel-TV update. Inspect packaged ABIs and actual file size, not just dependency sizes. Public SDK distribution also requires completed license/source/relink materials; dependency approval does not select the original project's license.
+The0.5.1 package removes libVLC and its native libraries/ABI filters. Verify the actual APK is below the old64MiB updater limit and contains the original project GPLv3 license plus current Media3 notices. Historical LibVLC source obligations apply to those old private artifacts, not an SDK removed from this APK.
 
-For rollback, retain the last verified source/APK/checksums and the current encrypted-profile installation. Android normally rejects installing an older version code over a newer release; prepare a retained-key build of the verified source with a higher version code, test it and seek distribution approval. Never uninstall or clear data to force rollback. This app has no server database to restore; Keystore-backed profiles may be unrecoverable if the installation/key is removed.
+For rollback, preserve the installation and Keystore key. Unmodified0.4.x code rejects schema3; do not install it over migrated profiles. Keep the current schema3 model/reader/writer, migration and visibility support while reverting a defective UI/playback change, assign a higher version code, sign with the retained key and test before requesting distribution approval. Never uninstall, clear data, force a downgrade or copy another installation's encrypted profile/key. There is no server database; profiles may be unrecoverable if their Keystore key is removed.

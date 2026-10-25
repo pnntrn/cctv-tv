@@ -4,9 +4,11 @@
 
 - Native Android TV/Google TV app in Java17, minAPI26, compile/target35. App ID is `com.pnntrn.cctv`.
 - `app/` owns TV viewing, guarded technician CRUD, encrypted profiles, phone setup and updater. `rtsp-compat/` vendors pinned Media3 RTSP1.8.0 with documented local parser fixes; preserve its Apache notices.
-- Development0.4.6 uses Media3 for SUB/grid and the owner-approved libVLC3.7.2 adapter for MAIN. Keep first-frame proof tied to rendered/displayed frames, never just RTSP success or Playing events.
+- Development0.5.1 uses Media3 SUB only in grid/fullscreen/technician preview. Saved MAIN URLs are data only. No VLC runtime or native libraries are bundled. First-frame proof must come from actual rendered frames.
+- Viewing chrome hides after1500ms, including focused toolbar controls after returning focus to content. One short Back restores the location default grid; a second distinct short Back within700ms opens Android Home. Reset the sequence on other input/dialog/location/lifecycle changes; retain draft guards.
+- Sanitize SDP names before Format labels/logs. Custom names win; optional detected metadata remains schema3 and is invalidated on SUB URL changes. Per-tile health uses rendered decoder counters at1s intervals with3000ms no-new-frame state; no timer heartbeat or unmeasured bandwidth.
 - Only visible streams may run; release grid decoders for fullscreen, setup and background. Preserve generation guards, independent SUB/MAIN test results and decoded-SUB save requirement.
-- Release APK targets ARM32/64 and compresses native libraries to fit the legacy64MiB updater limit. Debug includes Intel ABIs for emulator checks. Do not claim untested CPU/firmware compatibility.
+- Layouts1/4/6/8/9/16 share GridLayoutSpec geometry; six is one2x2 large plus five small. Hidden channels are filtered only in viewing; technician changes are staged until Save. One NVR per location; schema3 migration preserves IDs/credentials and splits legacy multi-NVR locations. Do not claim untested physical decoder capacity.
 
 ## Commands and evidence
 
@@ -35,6 +37,6 @@ Follow the owner's global engineering rules. Use meaningful Issues, focused shor
 
 Follow docs/RELEASING.md. Signing uses the retained key supplied by CI; never commit it or print secret values. Verify package, increasing version code, certificate, APK size, notices and checksums before proposing publication. The legacy updater feed is a separate publication step and also needs explicit approval. Verify the public APK bytes and feed after an approved publication.
 
-Keep THIRD_PARTY_NOTICES.md and dependency/source notices accurate. The owner approved GPLv3 or later for original CCTV code. Preserve third-party licenses and do not assume a dependency POM inventories every native component. Resolve bundled SDK notices/source/relink requirements before public distribution.
+Keep THIRD_PARTY_NOTICES.md and dependency/source notices accurate. The owner approved GPLv3 or later for original CCTV code. Preserve third-party licenses and do not assume a dependency POM inventories every native component. Historical LibVLC source/license investigation is retained for old private artifacts; it is not a current runtime dependency.
 
-There is no server database or production SQL migration. Profiles are local and encrypted with Android Keystore; uninstall/clear-data can destroy the key. Preserve the installation and profile schema. For a significant playback regression, build the previous verified source with a higher version code and retained key, validate it, and request approval before distribution. Do not promise profile recovery from an encrypted file after its key is lost. Do not force a downgrade or wipe data as a rollback.
+There is no server database or production SQL migration. Profiles are local and encrypted with Android Keystore; uninstall/clear-data can destroy the key. Preserve the installation and Keystore key. Schema3 upgrades read schema1/2. Old unmodified0.4.x readers reject schema3: rollback must retain the current schema3 model/reader/writer and visibility/migration support while reverting the defective UI/playback behavior, use a higher version code and retained key, and be validated before distribution approval. Never install an unmodified old reader over migrated profiles. Do not promise profile recovery from an encrypted file after its key is lost. Do not force a downgrade or wipe data as a rollback.

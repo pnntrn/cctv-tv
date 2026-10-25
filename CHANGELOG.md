@@ -2,6 +2,27 @@
 
 Release candidates remain subject to the physical-device checks listed below. Source history is available in [GitHub releases](https://github.com/pnntrn/cctv-tv/releases).
 
+## 0.5.1 — unreleased
+
+- Cluster layout/location/next-page/Settings icons at the top right with48dp Thai-labelled targets; location/page clicks wrap, including fullscreen-to-grid paging. Show location, layout, then page.
+- Hide viewing controls after1500ms even with toolbar focus, safely returning focus to content. Preserve open dialog/settings navigation and old picker shortcuts.
+- One short Back restores the location's default grid while preserving visible camera identity/page. A second distinct short Back within700ms opens Android TV Home; held/repeated events and dialog/edit cancellation cannot arm Home.
+- Show best-effort safe SDP media/session names over generated camera labels. Preserve custom names, propagate labels through H.264/HEVC in-band discovery, and cache sanitized optional metadata in schema3 until the SUB URL changes. No URL-derived names or ONVIF/API expansion.
+- Reject generic Video/Audio Media titles and recorder media/RTSP/streaming server identifiers, including vendor prefixes, software versions and separator variants. Revalidate cached detected names; keep saved custom names and specific meaningful titles.
+- Add persistent rendered-FPS/frame-health badges based on actual decoder output: connecting, live, no new frames after3000ms, or error. Still scenes remain live as frames render; no synthetic heartbeat or unmeasured bandwidth. Poll every1s and stop on background/release.
+- Add host and isolated-emulator regressions for controls, Back, name safety/cache and rendered still/stalled streams. Emulator fixtures do not establish owner-device compatibility, real recorder names or physical decoder capacity.
+- Keep playback SUB and retain package/signing/profile compatibility; current private candidate version code1018. Codes1016/1017 were prior installed evaluation builds. Public release/tag/updater publication remains separate approval.
+
+## 0.5.0 — unreleased
+
+- Use SUB for every camera view/test; remove MAIN controls and the unused VLC runtime.
+- Back returns home to the CCTV grid. Add idle-hiding toolbar, centered location, layout/location icons and held Left/Right shortcuts.
+- Add1/4/6/8/9/16 layouts, including one large plus five small.
+- Live channel arrangement with explicit hidden/visible state and staged Save/Cancel.
+- Combined single-NVR/location/default-grid setup; paired phone changes require decoded SUB and confirmation on the TV.
+- Schema3 reads1/2, preserving every camera and credential while splitting legacy multi-NVR locations. Old unmodified0.4.x cannot read schema3; see rollback requirements.
+- Retain package/signing key; version code1015. No recorder encoding change or automatic public release.
+
 ## 0.4.5 — release candidate
 
 - Fix HEVC black-screen startup for an observed recorder FU sequence: the IDR start identifies type19, but continuation/end packets report type38. Use the start fragment's key status when completing the NAL instead of misclassifying the end header.

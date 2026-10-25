@@ -45,14 +45,19 @@ public final class ProfileStore {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(128, data, 1, 12));
         String json = new String(cipher.doFinal(data, 13, data.length - 13), StandardCharsets.UTF_8);
-        JSONObject root = new JSONObject(json);
-        if (root.getInt("version") < 1 || root.getInt("version") > 2) throw new IllegalStateException("Unsupported profile schema");
+        return fromJson(new JSONObject(json));
+    }
+
+    static ArrayList<Location> fromJson(JSONObject root) throws Exception {
+        int version = root.getInt("version");
+        if (version < 1 || version > 3) throw new IllegalStateException("Unsupported profile schema");
         JSONArray array = root.getJSONArray("locations");
         ArrayList<Location> result = new ArrayList<>();
         for (int i = 0; i < array.length(); i++) {
             JSONObject obj = array.getJSONObject(i);
             Location loc = new Location(obj.getString("id"), obj.getString("name"));
             loc.grid = CameraRules.checkedGrid(obj.optInt("grid", 4));
+            loc.defaultGrid = CameraRules.checkedGrid(obj.optInt("defaultGrid", 4));
             loc.tcp = obj.optBoolean("tcp", true);
             loc.lastPage = obj.optInt("lastPage", 0);
             loc.lastCameraId = obj.optString("lastCameraId", "");
@@ -65,12 +70,14 @@ public final class ProfileStore {
                 CameraRules.validateUrl(c.getString("main"));
                 Camera camera = new Camera(c.getString("id"), c.getString("name"), c.getString("sub"), c.getString("main"));
                 camera.deviceId = c.optString("deviceId", ""); camera.channel = c.optInt("channel", 0);
+                camera.hidden = c.optBoolean("hidden", false);
+                camera.setDetectedName(c.optString("detectedName", null));
                 loc.cameras.add(camera);
             }
-            if (root.getInt("version") == 1) Nvr.linkLegacy(loc);
+            if (version == 1) Nvr.linkLegacy(loc);
             result.add(loc);
         }
-        return result;
+        return ProfileMigration.singleNvrLocations(result);
     }
 
     public static Nvr nvrFromJson(JSONObject o) throws Exception {
@@ -87,18 +94,23 @@ public final class ProfileStore {
         return o;
     }
 
-    public void save(List<Location> locations) throws Exception {
+    static JSONObject toJson(List<Location> locations) throws Exception {
         JSONArray array = new JSONArray();
         for (Location loc : locations) {
             JSONArray cams = new JSONArray();
             for (Camera c : loc.cameras) cams.put(new JSONObject().put("id", c.id).put("name", c.name)
-                    .put("sub", c.subUrl).put("main", c.mainUrl).put("deviceId", c.deviceId).put("channel", c.channel));
+                    .put("sub", c.subUrl).put("main", c.mainUrl).put("deviceId", c.deviceId).put("channel", c.channel).put("hidden", c.hidden)
+                    .put("detectedName", c.detectedName()));
             JSONArray devices = new JSONArray();
             for (Nvr n : loc.devices) devices.put(nvrJson(n, true));
             array.put(new JSONObject().put("devices", devices).put("lastPage", loc.lastPage).put("lastCameraId", loc.lastCameraId).put("id", loc.id).put("name", loc.name).put("grid", loc.grid)
-                    .put("tcp", loc.tcp).put("cameras", cams));
+                    .put("defaultGrid", loc.defaultGrid).put("tcp", loc.tcp).put("cameras", cams));
         }
-        byte[] plain = new JSONObject().put("version", 2).put("locations", array).toString().getBytes(StandardCharsets.UTF_8);
+        return new JSONObject().put("version", 3).put("locations", array);
+    }
+
+    public void save(List<Location> locations) throws Exception {
+        byte[] plain = toJson(locations).toString().getBytes(StandardCharsets.UTF_8);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.ENCRYPT_MODE, key());
         byte[] encrypted = cipher.doFinal(plain);

@@ -101,8 +101,7 @@ public final class PhoneSetupServer implements AutoCloseable {
                 if (pending == null || !Objects.equals(proof, input.optString("proof"))) throw new IllegalArgumentException("Test this configuration before saving");
                 JSONObject draft = pending; pending = null; proof = null;
                 if (!active.get() || session.expired(now())) throw new IllegalArgumentException("Pairing session ended");
-                respond(out, 200, handler.handle("save", draft)
-                        .put("message", "บันทึกบนทีวีแล้ว ปิดการจับคู่เพื่อเริ่มดูภาพได้").toString(), "");
+                respond(out, 200, handler.handle("save", draft).toString(), "");
             } else respond(out, 404, "{}", "");
         } catch (Exception e) {
             // Intentionally generic; exception messages can contain credentials.
