@@ -8,9 +8,10 @@ Release candidates remain subject to the physical-device checks listed below. So
 - Hide viewing controls after1500ms even with toolbar focus, safely returning focus to content. Preserve open dialog/settings navigation and old picker shortcuts.
 - One short Back restores the location's default grid while preserving visible camera identity/page. A second distinct short Back within700ms opens Android TV Home; held/repeated events and dialog/edit cancellation cannot arm Home.
 - Show best-effort safe SDP media/session names over generated camera labels. Preserve custom names, propagate labels through H.264/HEVC in-band discovery, and cache sanitized optional metadata in schema3 until the SUB URL changes. No URL-derived names or ONVIF/API expansion.
+- Reject generic Video Media/VideoMedia and Audio Media/AudioMedia titles, including cached detected names from earlier candidates. Keep saved custom names and specific meaningful titles.
 - Add persistent rendered-FPS/frame-health badges based on actual decoder output: connecting, live, no new frames after3000ms, or error. Still scenes remain live as frames render; no synthetic heartbeat or unmeasured bandwidth. Poll every1s and stop on background/release.
 - Add host and isolated-emulator regressions for controls, Back, name safety/cache and rendered still/stalled streams. Emulator fixtures do not establish owner-device compatibility, real recorder names or physical decoder capacity.
-- Keep playback SUB and retain package/signing/profile compatibility; version code1016. Public release/tag/updater publication remains separate approval.
+- Keep playback SUB and retain package/signing/profile compatibility; current private candidate version code1017. Code1016 was the prior installed evaluation build. Public release/tag/updater publication remains separate approval.
 
 ## 0.5.0 — unreleased
 

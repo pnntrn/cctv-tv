@@ -19,6 +19,7 @@ public final class SdpCameraName {
                 || value.indexOf('\\') >= 0 || value.indexOf(':') >= 0
                 || lower.contains("%40") || lower.contains("%3a") || lower.contains("%2f")
                 || lower.matches("[-_ .?]+")
+                || lower.matches("(?:video|audio)[ _-]*media")
                 || lower.matches("(?:rtsp|rtp|video|audio|camera|ip camera|network camera|live|stream|session|h264|h265|hevc|avc|default|unnamed|none|n/a)(?:[ _-]*(?:session|stream|video|camera|\\d+))*")
                 || lower.startsWith("session streamed by") || lower.equals("media server")
                 || lower.matches("(?:vigi camera|hik media server|streaming session|live555 streaming media|media presentation|dvr|nvr)")) return null;

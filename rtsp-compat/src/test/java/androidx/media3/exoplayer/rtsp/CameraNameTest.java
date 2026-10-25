@@ -18,6 +18,15 @@ public class CameraNameTest {
         for (String name : new String[]{"rtsp://user:secret@host/feed", "user:secret@host", "front\u202Eback", "front\u0001back", "RTSP Session", "Session streamed by \"preview\"", "IP Camera", "H264", "-", "?????", "VIGI Camera", "Hik Media Server"})
             assertNull("Unsafe/generic name was published", label(name, name));
     }
+    @Test public void genericVideoAndAudioMediaTitlesNeverReachFormat() throws Exception {
+        for (String generic : new String[]{"Video Media", "VideoMedia", "video media", "VIDEO_MEDIA", "Video-Media", "video__-media",
+                "Audio Media", "AudioMedia", "audio media", "AUDIO_MEDIA", "Audio-Media", "audio__-media"}) {
+            assertNull("Generic media title must not be published: " + generic, label(generic, generic));
+            assertEquals("Meaningful session name remains available", "Warehouse East", label("Warehouse East", generic));
+        }
+        assertEquals("Video Media East Gate", label("Video Media East Gate", null));
+        assertEquals("Audio Media Loading Bay", label("Warehouse East", "Audio Media Loading Bay"));
+    }
     @Test public void sanitizerBoundsByCodePointsWithoutSplittingSurrogatePairs() {
         String input = "🚪".repeat(90);
         String sanitized = SdpCameraName.sanitize(input);

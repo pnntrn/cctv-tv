@@ -39,4 +39,19 @@ public class CameraMetadataTest {
         stored.put("detectedName","secret:password@host");assertNull(ProfileStore.fromJson(json).get(0).cameras.get(0).detectedName());
         stored.remove("detectedName");assertEquals("Camera 1",ProfileStore.fromJson(json).get(0).cameras.get(0).displayName());
     }
+    @Test public void profileLoadDiscardsGenericMediaCacheAndPreservesSavedCustomNames() throws Exception {
+        for(String savedName:new String[]{"Camera 3","Gatehouse custom","Video Media"}) {
+            for(String generic:new String[]{"Video Media","VideoMedia","Audio Media","AudioMedia"}) {
+                Location location=new Location("L");
+                location.cameras.add(new Camera("camera-3",savedName,"rtsp://example/sub","rtsp://example/main"));
+                JSONObject json=ProfileStore.toJson(List.of(location));
+                json.getJSONArray("locations").getJSONObject(0).getJSONArray("cameras").getJSONObject(0).put("detectedName",generic);
+                Location loaded=ProfileStore.fromJson(json).get(0);Camera camera=loaded.cameras.get(0);
+                assertNull("Newly rejected metadata must be ignored on load",camera.detectedName());
+                assertEquals(savedName,camera.name);assertEquals(savedName,camera.displayName());
+                assertEquals("camera-3",camera.id);assertEquals("rtsp://example/sub",camera.subUrl);assertEquals("rtsp://example/main",camera.mainUrl);
+                assertFalse(ProfileStore.toJson(List.of(loaded)).getJSONArray("locations").getJSONObject(0).getJSONArray("cameras").getJSONObject(0).has("detectedName"));
+            }
+        }
+    }
 }
